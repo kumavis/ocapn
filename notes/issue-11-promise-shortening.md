@@ -322,7 +322,83 @@ in discussion) or switch to role names for the spec. Ridley's current
 suggestion: `[Caller, Shortener₁, …, Shortenerₙ, Settler]`, or in
 spec-friendly form, `P₁…Pₙ` for peers and `Oₚ,ₘ` for object m on peer p.
 
-## 6. Where things stand
+## 6. Comparison: `op:flush` vs. Cap'n Proto's embargo
+
+Both are mechanisms for preserving message ordering across promise
+resolution. Both explicitly avoid WormholeOp. But the two designs make
+contrasting architectural choices that clarify what Ridley's proposal is
+optimizing for.
+
+### 6.1 At a glance
+
+| Dimension | Cap'n Proto embargo | Ridley `op:flush` (current latest) |
+|---|---|---|
+| What it preserves | E-order (per-reference FIFO) | Vat-to-object FIFO end-to-end |
+| Who initiates | Receiver of `Resolve` (Alice) | Promise-host ready to shorten (Bob) |
+| Where the buffer lives | Receiver's queue on the new direct path | Sender's local promise `p'` (Alice) |
+| Synchronization signal | `Disembargo` round-trip looped through the *old* path | `op:flush` / "flush-done" round-trip on A↔B; B→C 3PH gift sequenced behind forwarded messages |
+| Trigger | Each `Resolve` to a remote ref | Each shortening event |
+| Relationship to 3PH | Orthogonal — embargo guards the new path that 3PH creates | Sequenced — flush completes *before* 3PH starts |
+| Multi-hop chains | "Forward strictly to R" — chain is **never** collapsed past the first remote ref | Transitive shortening — each link may shorten with its own flush |
+| Tribble 4-way race fix | "Forward strictly to R" rule | Per-shortening flush; collapses each have to flush |
+| Wire visibility | Internal control message | New top-level CapTP op |
+| Pipelining during the gap | Messages can queue at receiver (Cap'n Proto) | Messages buffer at sender (erights' §5.2 enhancement would move them to far end) |
+
+### 6.2 Three structural differences
+
+**1. Who decides to synchronize.** Cap'n Proto puts the trigger on the
+*receiver*: Alice has just been told about a resolution and decides to
+embargo before using the new direct path. Ridley puts the trigger on
+the *resolver*: Bob, who is about to shorten a chain, asks Alice to
+quiesce her sends through him before he triggers the 3PH. The
+receiver-initiated model fits naturally when the resolution information
+itself is the trigger; the resolver-initiated model fits when shortening
+is a discrete event that some other party can choose to enact.
+
+**2. How the "drained" signal is constructed.** Cap'n Proto uses a
+*loopback through the old path*: it sends `Disembargo` along whatever
+path the now-stale messages were on; when the disembargo returns, FIFO
+guarantees that path has drained. Ridley uses a *direct
+request-response on a different link*: Bob asks Alice via `op:flush` "are
+you done?", Alice swaps her export-table entry for the resolver (so any
+future sends will buffer in `p'` rather than go over the wire to Bob via
+the old `r`), and Alice replies "flush done." The rendezvous is the
+flush plus its reply; FIFO of A↔B is what makes the reply mean what it
+needs to mean. The B→C 3PH gift then naturally sequences behind any
+previously-forwarded A→B→C messages because B↔C is FIFO.
+
+In both designs, the underlying primitive is the same — per-connection
+FIFO from the netlayer. They just exploit it on different topologies:
+Cap'n Proto exploits FIFO on the path that needs to drain, Ridley
+exploits FIFO on A↔B for the rendezvous and FIFO on B↔C for the gift's
+relative ordering.
+
+**3. Whether resolution chains collapse.** This is the most important
+divergence. Cap'n Proto's "forward strictly to R" rule says: once P
+resolves to a remote R, the chain is frozen — even if R itself later
+resolves remotely, P keeps forwarding to R, not to R's resolution. This
+sidesteps the Tribble 4-way race by *giving up further shortening*.
+Ridley's design allows further shortening: each link of a resolution
+chain (P→R, R→Q, …) can be shortened with its own flush. The cost is
+extra round trips for long chains; the win is the availability property
+erights opened the issue with — *"if vatB alone goes offline, … messages
+from Alice in vatA to Charlie in vatC should still be delivered."*
+Cap'n Proto's rule explicitly trades that away. Ridley's design tries
+to keep it.
+
+### 6.3 What they share
+
+- Both rely on per-connection FIFO at the netlayer as the bedrock
+  primitive.
+- Both avoid WormholeOp and so settle for something weaker than full
+  E-order.
+- Both implement a *barrier* across resolution rather than trying to
+  reorder implicitly with timestamps or sequence numbers.
+- Both have a "move the buffer closer to the destination for better
+  pipelining" alternative on the table (erights' §5.2 vatC-side embargo
+  for Ridley; Cap'n Proto's existing receiver-side queuing).
+
+## 7. Where things stand
 
 - The group has *not* settled on a single ordering guarantee statement.
   erights' position — the only useful FIFO is end-to-end vat-to-object —
@@ -344,7 +420,7 @@ spec-friendly form, `P₁…Pₙ` for peers and `Oₚ,ₘ` for object m on peer 
 - Tribble's 4-party scenario and the Two Generals concern are
   acknowledged but not blocking.
 
-## 7. Sources
+## 8. Sources
 
 ### Primary thread
 - [ocapn/ocapn#11 — Promise Shortening](https://github.com/ocapn/ocapn/issues/11)
@@ -369,9 +445,9 @@ spec-friendly form, `P₁…Pₙ` for peers and `Oₚ,ₘ` for object m on peer 
 - [erights.org: __order Miranda method](http://www.erights.org/javadoc/org/erights/e/elib/prim/MirandaMethods.html)
 - Local: `notes/message-ordering.md` for surrounding terminology.
 
-## 8. Brainstorming alternatives
+## 9. Brainstorming alternatives
 
-### 8.1 `delivered-after` — opt-in invocation barriers (kumavis)
+### 9.1 `delivered-after` — opt-in invocation barriers (kumavis)
 
 **Idea.** Add an optional `delivered-after` parameter to `op:deliver`
 (and `op:deliver-only`) carrying a list of promise references — possibly
