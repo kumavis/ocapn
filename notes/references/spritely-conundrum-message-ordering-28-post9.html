@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Conundrum: Message Ordering - #9 by markm - Conundrums - Spritely Institute</title>
+    <meta name="description" content="[Someone please supply a link/text describing the exact form of this conundrum, which I will happily replace this text with.]">
+    <meta name="generator" content="Discourse 2026.5.0-latest - https://github.com/discourse/discourse version cdfab46a0653586efc58b744b33e90f9ae6c4442">
+<link rel="icon" type="image/png" href="https://canada1.discourse-cdn.com/flex030/uploads/spritely/optimized/1X/018fb2dcfa3706e24dd0aa014d27a300a934eef0_2_32x32.png">
+<link rel="apple-touch-icon" type="image/png" href="https://canada1.discourse-cdn.com/flex030/uploads/spritely/optimized/1X/018fb2dcfa3706e24dd0aa014d27a300a934eef0_2_180x180.png">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111111">
+
+<meta name="color-scheme" content="light dark">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, viewport-fit=cover">
+<link rel="canonical" href="https://community.spritely.institute/t/conundrum-message-ordering/28" />
+
+
+<link rel="search" type="application/opensearchdescription+xml" href="https://community.spritely.institute/opensearch.xml" title="Spritely Institute Search">
+
+    
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/color_definitions_light-default_-1_35_62828323821b3f3bc9e6b2ab2b7cf2ff2b0287e6.css?__ws=community.spritely.institute" media="(prefers-color-scheme: light)" rel="stylesheet" class="light-scheme"/><link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/color_definitions_dark_1_35_57a2a1b3b6ec38ba9b359c7f243edd5a8829714e.css?__ws=community.spritely.institute" media="(prefers-color-scheme: dark)" rel="stylesheet" class="dark-scheme" data-scheme-id="1"/>
+
+<link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/common_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="common"  />
+
+  <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/mobile_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="(max-width: 39.99999rem)" rel="stylesheet" data-target="mobile"  />
+  <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/desktop_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="(min-width: 40rem)" rel="stylesheet" data-target="desktop"  />
+
+
+
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/chat_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="chat"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/checklist_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="checklist"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-adplugin_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-adplugin"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-ai_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-ai"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-cakeday_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-cakeday"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-chat-integration_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-chat-integration"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-details_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-details"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-github_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-github"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-lazy-videos_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-lazy-videos"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-local-dates_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-local-dates"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-narrative-bot_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-narrative-bot"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-presence_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-presence"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-solved_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="discourse-solved"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/footnote_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="footnote"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/hosted-site_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="hosted-site"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/poll_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="poll"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/spoiler-alert_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="all" rel="stylesheet" data-target="spoiler-alert"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/chat_mobile_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="(max-width: 39.99999rem)" rel="stylesheet" data-target="chat_mobile"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-ai_mobile_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="(max-width: 39.99999rem)" rel="stylesheet" data-target="discourse-ai_mobile"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/chat_desktop_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="(min-width: 40rem)" rel="stylesheet" data-target="chat_desktop"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/discourse-ai_desktop_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="(min-width: 40rem)" rel="stylesheet" data-target="discourse-ai_desktop"  />
+    <link href="https://yyz2.discourse-cdn.com/flex030/stylesheets/poll_desktop_5f09792b75b432ab0b5d02c4b77358827863210a.css?__ws=community.spritely.institute" media="(min-width: 40rem)" rel="stylesheet" data-target="poll_desktop"  />
+
+  
+    
+    
+
+    
+  <meta name="google-site-verification" content="QUBiXffqmi8iTMX0AGM5hyjIo36k_AvACXf6Ba5Dk7M">
+
+    
+        <link rel="alternate nofollow" type="application/rss+xml" title="RSS feed of &#39;Conundrum: Message Ordering&#39;" href="https://community.spritely.institute/t/conundrum-message-ordering/28.rss" />
+    <meta property="og:site_name" content="Spritely Institute" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:image" content="https://canada1.discourse-cdn.com/flex030/uploads/spritely/original/1X/018fb2dcfa3706e24dd0aa014d27a300a934eef0.png" />
+<meta property="og:image" content="https://canada1.discourse-cdn.com/flex030/uploads/spritely/original/1X/018fb2dcfa3706e24dd0aa014d27a300a934eef0.png" />
+<meta property="og:url" content="https://community.spritely.institute/t/conundrum-message-ordering/28/9" />
+<meta name="twitter:url" content="https://community.spritely.institute/t/conundrum-message-ordering/28/9" />
+<meta property="og:title" content="Conundrum: Message Ordering" />
+<meta name="twitter:title" content="Conundrum: Message Ordering" />
+<meta property="og:description" content="Prior to the “Lost Resolution Bug”, E-Order appears to be something  delivered “for free”, falling out of the implementation naturally. We  can jump up and down and say “look at this thing we got at no extra  cost!”   This is indeed one of the considerations leading me to retreat to Tyler’s Waterken point-to-point fifo.  Even after that retreat, there’s a related problem we’ve internally at Agoric been calling the “Auxiliary Data Problem” for which we have several adequate but complex paper de..." />
+<meta name="twitter:description" content="Prior to the “Lost Resolution Bug”, E-Order appears to be something  delivered “for free”, falling out of the implementation naturally. We  can jump up and down and say “look at this thing we got at no extra  cost!”   This is indeed one of the considerations leading me to retreat to Tyler’s Waterken point-to-point fifo.  Even after that retreat, there’s a related problem we’ve internally at Agoric been calling the “Auxiliary Data Problem” for which we have several adequate but complex paper de..." />
+<meta property="og:article:section" content="Architecture" />
+<meta property="og:article:section:color" content="9EB83B" />
+<meta property="og:article:section" content="Conundrums" />
+<meta property="og:article:section:color" content="12A89D" />
+<meta property="og:article:tag" content="ocaps" />
+<meta property="article:published_time" content="2022-10-06T23:01:54+00:00" />
+<meta property="og:ignore_canonical" content="true" />
+
+
+    
+  </head>
+  <body class="crawler ">
+    
+    <header>
+  <a href="/">Spritely Institute</a>
+</header>
+
+    <div id="main-outlet" class="wrap" role="main">
+        <div id="topic-title">
+    <h1>
+      <a href="/t/conundrum-message-ordering/28">Conundrum: Message Ordering</a>
+    </h1>
+
+      <div class="topic-category" itemscope itemtype="http://schema.org/BreadcrumbList">
+          <span itemprop="itemListElement" itemscope itemtype="http://schema.org/ListItem">
+            <a href="/c/architecture/8" class="badge-wrapper bullet" itemprop="item">
+              <span class='badge-category-bg' style='background-color: #9EB83B'></span>
+              <span class='badge-category clear-badge'>
+                <span class='category-name' itemprop='name'>Architecture</span>
+              </span>
+            </a>
+            <meta itemprop="position" content="1" />
+          </span>
+          <span itemprop="itemListElement" itemscope itemtype="http://schema.org/ListItem">
+            <a href="/c/architecture/conundrums/11" class="badge-wrapper bullet" itemprop="item">
+              <span class='badge-category-bg' style='background-color: #12A89D'></span>
+              <span class='badge-category clear-badge'>
+                <span class='category-name' itemprop='name'>Conundrums</span>
+              </span>
+            </a>
+            <meta itemprop="position" content="2" />
+          </span>
+      </div>
+
+      <div class="topic-category">
+        <div class='discourse-tags list-tags'>
+            <a href='https://community.spritely.institute/tag/ocaps' class='discourse-tag' rel="tag">ocaps</a>
+        </div>
+      </div>
+  </div>
+
+  
+
+    <div itemscope="itemscope" itemtype="http://schema.org/DiscussionForumPosting">
+      <meta itemprop='headline' content='Conundrum: Message Ordering'>
+      <link itemprop='url' href='https://community.spritely.institute/t/conundrum-message-ordering/28'>
+      <meta itemprop='datePublished' content='2022-01-27T20:07:25Z'>
+      <meta itemprop='keywords' content='ocaps'>
+          <meta itemprop='articleSection' content='Conundrums'>
+        <div itemprop='publisher' itemscope itemtype="http://schema.org/Organization">
+          <meta itemprop='name' content='Spritely Networked Communities Institute'>
+            <div itemprop='logo' itemscope itemtype="http://schema.org/ImageObject">
+              <meta itemprop='url' content='https://canada1.discourse-cdn.com/flex030/uploads/spritely/original/1X/e9b706e989a26300d786a73fe2934ff6ff9bf89c.png'>
+            </div>
+        </div>
+
+
+          <span itemprop='author' itemscope itemtype="http://schema.org/Person">
+            <meta itemprop='name' content='frandallfarmer'>
+            <link itemprop='url' rel='nofollow' href='https://community.spritely.institute/u/frandallfarmer'>
+          </span>
+        <meta itemprop='text' content='[Someone please supply a link/text describing the exact form of this conundrum, which I will happily replace this text with.]'>
+
+          <div id='post_9' itemprop="comment" itemscope="itemscope" itemtype="http://schema.org/Comment" class='topic-body crawler-post'>
+            <div class='crawler-post-meta'>
+              <span class="creator" itemprop="author" itemscope="itemscope" itemtype="http://schema.org/Person">
+                <a rel='nofollow' href='https://community.spritely.institute/u/markm'><span itemprop="name">markm</span></a>
+                  <meta itemprop='url' content='https://community.spritely.institute/u/markm'>
+                
+              </span>
+
+
+
+              <span class="crawler-post-infos">
+                  <time itemprop="datePublished" datetime='2022-10-06T23:01:54Z' class='post-time'>
+                    October 6, 2022, 11:01pm
+                  </time>
+                  <meta itemprop='dateModified' content='2022-10-06T23:01:54Z'>
+              <span itemprop="position">9</span>
+              </span>
+            </div>
+            <div class='post' itemprop="text">
+              <aside class="quote no-group" data-username="cwebber" data-post="6" data-topic="28">
+<div class="title">
+<div class="quote-controls"></div>
+<img loading="lazy" alt="" width="24" height="24" src="https://yyz2.discourse-cdn.com/flex030/user_avatar/community.spritely.institute/cwebber/48/9_2.png" class="avatar"> cwebber:</div>
+<blockquote>
+<p>E-Order can fall apart. More useful conversation on <a href="https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ" rel="noopener nofollow ugc">this cap-talk thread </a>.</p>
+</blockquote>
+</aside>
+<blockquote>
+<p>Prior to the “Lost Resolution Bug”, E-Order appears to be something<br>
+delivered “for free”, falling out of the implementation naturally. We<br>
+can jump up and down and say “look at this thing we got at no extra<br>
+cost!”</p>
+</blockquote>
+<p>This is indeed one of the considerations leading me to retreat to Tyler’s Waterken point-to-point fifo.</p>
+<p>Even after that retreat, there’s a related problem we’ve internally at Agoric been calling the “Auxiliary Data Problem” for which we have several adequate but complex paper designs.<br>
+I have in progress a cheap approximation at <a href="https://github.com/Agoric/agoric-sdk/pull/6355" class="inline-onebox" rel="noopener nofollow ugc">fix: cheap auxdata by erights · Pull Request #6355 · Agoric/agoric-sdk · GitHub</a> that I owe everyone a writeup about. Might as well mention it here so I’ll owe it to y’all as well <img src="https://emoji.discourse-cdn.com/twitter/wink.png?v=12" title=":wink:" class="emoji" alt=":wink:" loading="lazy" width="20" height="20"></p>
+            </div>
+
+              <div itemprop="interactionStatistic" itemscope="itemscope" itemtype="http://schema.org/InteractionCounter">
+                  <meta itemprop="interactionType" content="http://schema.org/LikeAction"/>
+                  <meta itemprop="userInteractionCount" content="3" />
+                <span class='post-likes'>3 Likes</span>
+              </div>
+
+
+            
+
+
+          </div>
+
+    </div>
+
+      <div role='navigation' itemscope itemtype='http://schema.org/SiteNavigationElement' class="topic-body crawler-post">
+          <span itemprop='name'>
+            <a itemprop="url" href="/t/conundrum-message-ordering/28#post_9">show post in topic</a>
+          </span>
+      </div>
+
+    
+
+
+
+
+    </div>
+    <footer class="container wrap">
+  <nav class='crawler-nav'>
+    <ul>
+      <li itemscope itemtype='http://schema.org/SiteNavigationElement'>
+        <span itemprop='name'>
+          <a href='/' itemprop="url">Home </a>
+        </span>
+      </li>
+      <li itemscope itemtype='http://schema.org/SiteNavigationElement'>
+        <span itemprop='name'>
+          <a href='/categories' itemprop="url">Categories </a>
+        </span>
+      </li>
+      <li itemscope itemtype='http://schema.org/SiteNavigationElement'>
+        <span itemprop='name'>
+          <a href='/guidelines' itemprop="url">Guidelines </a>
+        </span>
+      </li>
+        <li itemscope itemtype='http://schema.org/SiteNavigationElement'>
+          <span itemprop='name'>
+            <a href='/tos' itemprop="url">Terms of Service </a>
+          </span>
+        </li>
+        <li itemscope itemtype='http://schema.org/SiteNavigationElement'>
+          <span itemprop='name'>
+            <a href='/privacy' itemprop="url">Privacy Policy </a>
+          </span>
+        </li>
+    </ul>
+  </nav>
+  <p class='powered-by-link'>Powered by <a href="https://www.discourse.org">Discourse</a>, best viewed with JavaScript enabled</p>
+</footer>
+
+    
+    
+  </body>
+  
+</html>

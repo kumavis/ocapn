@@ -4,12 +4,12 @@ Research notes synthesizing how the E-family of capability-secure protocols
 defines message-delivery ordering, where each protocol diverges, and how the
 "Lost Resolution Bug" and WormholeOp fit in.
 
-Caveat: several primary sources (`erights.org`, the Spritely community forum)
-were not directly fetchable from this environment; their content is summarized
-from search-engine snippets and corroborating secondary sources (Cap'n Proto's
-`rpc.capnp` comments, Agoric's `agoric-sdk#40`, `PlaygroundVat/limitations.md`).
-Quotes attributed to Mark Miller's posts (#8, #9 on the Spritely thread) are
-known to exist but were not retrieved verbatim here.
+Primary mirrors for the Spritely thread, Cap'n Proto `rpc.capnp`, cap-talk,
+and selected `ocapn/ocapn` issues live under `notes/references/` (see
+`notes/references/README.md`). **erights.org** pages are not mirrored here
+(canonical content is available from the usual GitHub / archive mirrors).
+Remaining gap: erights.org animations and wiki-only material cited in passing
+still rely on other mirrors if the live site is blocked.
 
 ---
 
@@ -165,11 +165,13 @@ Mechanisms:
 
 ### 3.1 Caveat on definition
 
-The phrase "Lost Resolution Bug" appears in Mark Miller's posts on the
-Spritely "Conundrum: Message Ordering" thread and in Agoric's
-`agoric-sdk#40`, but I was not able to retrieve a precise definition
-from either source (the Spritely forum returned 403; warner in the
-Agoric issue says "I won't be able to capture the full idea here").
+The phrase "Lost Resolution Bug" appears in Mark Miller's post #9 on the
+Spritely "Conundrum: Message Ordering" thread (mirrored under
+`notes/references/`, especially `spritely-conundrum-message-ordering-excerpts.md`)
+and in Agoric's `agoric-sdk#40`. The Spritely quote is verbatim but rhetorical
+(prior to that bug, E-order seemed to come “for free”); warner in the Agoric
+issue still says "I won't be able to capture the full idea here" for a tight
+formal spec.
 Per dtribble in [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11),
 the same family of issues is also called "**Tribble's 4-way race**"
 and "the **Midori four vat promise shortening case**" — dtribble
