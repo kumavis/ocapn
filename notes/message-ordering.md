@@ -94,8 +94,11 @@ in the current draft (between two CapTP-session peers).
 ### 1.4 E-ORDER (Tree Order with forks)
 
 All of fail-stop FIFO, plus: when a reference is included as an
-argument of an eventually-sent message, the reference is **forked**.
-The receiver gets a fork of the reference, not the original. The
+argument of an eventually-sent message, the reference is **forked** at a position
+**between** the sender’s prior eventual sends on it and the send
+that carries it. The receiver does not receive the sender’s
+original reference; they receive a **fork** whose deliveries at the
+target cannot run **ahead of** those prior sends. The
 forked reference's authority is "post-X target" — only enabling
 messages to be delivered after X (and any other prior sends on
 the original reference) have already been delivered.
