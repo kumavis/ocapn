@@ -46,11 +46,25 @@ introductions, indexed by a nonce. A deposits the gift; B redeems it.
 **4 Tables (CapTP).** The per-connection state in CapTP-of-E: Questions,
 Answers, Imports, Exports.
 
-**E-order.** "Two calls made on the same reference are delivered in the order
-they were made." Per-reference FIFO. The headline ordering guarantee of E.
+**E-order.** Informal name for E's "fully order-preserving" delivery on a
+single reference using `<-`. From the canonical [erights `partial-order.html`
+"Partially-Ordered Message Delivery"](http://erights.org/elib/concurrency/partial-order.html):
+"Among messages successively sent on a single reference (ie, using the
+eventual send operator '<-'), E guarantees fully order-preserving delivery.
+All messages are delivered in the order sent unless and until the reference
+breaks." The `rpc.capnp` spec re-defines and enforces this guarantee under
+the same name (see local mirror `notes/references/capnproto-rpc.capnp`).
 
-**Partial order (in CapTP).** The system-wide guarantee is only partial:
-ordering is enforced per reference, not globally across references or vats.
+**Full / Tree / Partial Order.** The three tiers of E's ordering spec
+([erights `partial-order.html`](http://erights.org/elib/concurrency/partial-order.html)
+plus its sequel
+[erights `after-both.html`](http://erights.org/elib/equality/after-both.html)):
+*Full Order* on a single reference, two-party; *Tree Order* across forks
+(three-party Granovetter — sending a reference as an argument **forks** the
+reference, with the fork-position between the surrounding sends defining
+the partial order); *Partial Order* once the equality construct `E.join`
+adds joins to that tree (four-party grant matching). "Partial order in
+CapTP" usually refers to this whole spec.
 
 **Point-to-point FIFO (Waterken / Tyler Close).** A weaker, simpler guarantee:
 order is preserved along a single two-party connection, regardless of which
@@ -63,23 +77,40 @@ ref, the receiver queues outbound messages on the new direct path and sends a
 `receiverLoopback`, the queue flushes. Forces any in-flight messages on the
 old path to drain first, preserving E-order across resolution.
 
-**Tribble 4-way race.** Named for Dean Tribble. Race in which a remote promise
-P1 resolves to another remote promise P2 which simultaneously resolves to a
-fourth-vat object Q. Cap'n Proto avoids this by the rule: once P resolves to
-remote ref R, all further messages to P forward strictly to R, even if R
-itself later resolves to Q.
+**Tribble 4-way race.** Named for Dean Tribble. A race in which a remote
+promise P1 resolves to another remote promise P2 which simultaneously
+resolves to a fourth-vat object Q. Cap'n Proto avoids it by the rule: once
+P resolves to remote ref R, all further messages to P forward strictly to
+R, even if R itself later resolves to Q. dtribble in
+[ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11) confirms this is
+the same as "the Midori four vat promise shortening case."
 
-**WormholeOp.** CapTP-of-E side-channel packet. The introducing vat A sends
-gift information directly to the destination vat C, in parallel with the
-"long path" handoff message that travels through B. C is told to "process
-this data ahead of further requests from the sending vat"; redundant arrivals
-(via short and long path) are deduped by sequence number.
+**WormholeOp.** A CapTP-of-E mechanism in which VatA tunnels her
+unacknowledged A↔C VatTP traffic *through VatB* on the way to VatC, so
+that VatB cannot deliver any message that depends on VatC's state until
+VatC has processed VatA's prior A→C traffic. The wormhole'd bytes are
+VatTP-encrypted, so VatB is just an untrusted relay. Per the canonical
+[erights `WormholeOp.html`](http://erights.org/elib/distrib/captp/WormholeOp.html):
+"The receiving vat should process this data ahead of processing further
+requests from the sending vat." Marked "Not yet implemented" on the
+erights page; not adopted by Cap'n Proto or OCapN. *Not* a side-channel
+"shortcut" packet, despite the name suggesting otherwise — it travels the
+same A→B→C path as everything else, just carrying redundant copies of
+A→C traffic.
 
-**Lost Resolution Bug.** A class of three-party race in CapTP-of-E in which
-the binding "promise → target" can be discarded mid-handoff, causing
-in-flight messages addressed to the promise to be silently dropped and
-E-order to be broken. Identified by Miller, Tribble, Hibbert, and Warner
-(see `agoric-sdk#40`).
+**Lost Resolution Bug.** A documented bug in current E implementations.
+From the canonical [erights `passing-rules.html#lost-resolution`](http://erights.org/elib/equality/passing-rules.html#lost-resolution):
+"In current implementations of E, a transmitted Far reference to Carol,
+sent by Alice to Bob, when Alice Bob and Carol reside in three separate
+vats, will be received instead as a promise for Carol that will eventually
+resolve into a Far reference to Carol. As a result, if Alice sends Bob a
+hashtable containing the reference to Carol as a key, the hashtable will
+fail to unserialize in Bob's vat." The "resolution" that gets *lost* is
+the **resolved-ness** of the reference (Far→Promise downgrade across
+3-vat introductions). In current E implementations the bug is the
+deliberate workaround for the lack of WormholeOp; "fixing" it requires
+implementing WormholeOp. Distinct from Tribble's 4-way race, though
+both stem from preserving E-order across indirect reference passing.
 
 ---
 
@@ -163,141 +194,265 @@ Mechanisms:
 
 ## 3. The Lost Resolution Bug
 
-### 3.1 Caveat on definition
+### 3.1 Authoritative definition
 
-The phrase "Lost Resolution Bug" appears in Mark Miller's post #9 on the
-Spritely "Conundrum: Message Ordering" thread (mirrored under
-`notes/references/`, especially `spritely-conundrum-message-ordering-excerpts.md`)
-and in Agoric's `agoric-sdk#40`. The Spritely quote is verbatim but rhetorical
-(prior to that bug, E-order seemed to come “for free”); warner in the Agoric
-issue still says "I won't be able to capture the full idea here" for a tight
-formal spec.
-Per dtribble in [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11),
-the same family of issues is also called "**Tribble's 4-way race**"
-and "the **Midori four vat promise shortening case**" — dtribble
-explicitly confirms they are the same thing.
+From [erights `passing-rules.html#lost-resolution`](http://erights.org/elib/equality/passing-rules.html#lost-resolution),
+the original page documenting the bug:
 
-The most defensible reading is therefore: **the Lost Resolution Bug is
-markm's name for the same multi-party promise-shortening ordering
-race that Cap'n Proto's `rpc.capnp` calls the Tribble 4-way race.**
-"Lost resolution" likely refers to the ordering of resolutions being
-broken, not to a binding being discarded.
+> "In current implementations of E, a transmitted Far reference to
+> Carol, sent by Alice to Bob, when Alice Bob and Carol reside in
+> three separate vats, will be received instead as a promise for
+> Carol that will eventually resolve into a Far reference to Carol.
+> As a result, if Alice sends Bob a hashtable containing the
+> reference to Carol as a key, the hashtable will fail to
+> unserialize in Bob's vat. Although we know how to fix this problem,
+> we may not fix it quickly due to other matters being higher
+> priority."
 
-### 3.2 The scenario (per dtribble in ocapn/ocapn#11)
+The *resolution* that gets **lost** is the **resolved-ness** of the
+reference: a Far (Settled) Carol-reference becomes a Promise
+(Unresolved) on arrival at Bob. The named consequence in the spec
+is that hashtables fail to unserialize, because hashtable keys
+must be Settled.
 
-Four parties: A, B, C, D. A pipelines through Bob, who pipelines
-through Carol, who pipelines through Derek. Each link can shorten
-when the next-link's promise resolves. dtribble's writeup:
+This is a real, named, *implementation* bug. It is not a name for
+the broader ordering race or for a forwarder being discarded; my
+earlier notes had this wrong.
 
-> "B forwards X to Y, resulting in the handoff. C forwards Y to Z,
-> resulting in the handoff. […] Those two shortenings overlap, and
-> messages could be sent on any of the X,Y,Z,R between any
-> shortenings where the shortenings happen in almost any order, so
-> those messages arrive at R in a broad range of orders."
+### 3.2 Why it exists — the three-way conflict
 
-The 4-vat case is irreducible — the 3-vat case doesn't have crossing
-shortenings — and dtribble's view is that any implementation should
-generalize the 4-vat solution rather than worry about 5, 6, etc.
+Three E semantic requirements pull against each other in the 3-vat
+case (from
+[erights `WormholeOp.html#conflict`](http://erights.org/elib/distrib/captp/WormholeOp.html#conflict)):
 
-### 3.3 How the descendants address it
+1. **Partial ordering.** In a Granovetter introduction, the forked
+   reference Bob receives must give him access only to "post-X
+   Carol" — only enabling messages from Bob to arrive at Carol
+   *after* X has been delivered.
+2. **Going Home.** A Far (Resolved remote) reference sent home as
+   an argument arrives as a Near reference — services like
+   `MintMaker` rely on this to require Near `src` purses.
+3. **Preserve passability.** A PassByCopy hashtable keyed on a
+   PassByProxy reference should remain operational after passing
+   between vats. Hashtables require Settled keys, which means a
+   Carol-key arriving at Bob must be Settled (Far) too.
 
-- **Cap'n Proto:** "Forward strictly to R" rule + Embargo / Disembargo.
-  Once P resolves to a remote R, P is forwarded only to R, never
-  re-shortened to R's own resolution. This freezes the chain and
-  sidesteps the race entirely. Receiver-side embargo serializes
-  the path switchover.
-- **Ridley's `op:flush` proposal (current):** Allows transitive
-  shortening; each link of a long resolution chain can shorten with
-  its own flush. The cost is per-link round trips; the win is the
-  availability property erights motivates the issue with — once
-  shortened, intermediate vats can leave the network.
-- **Mark Miller's later view (per Spritely thread):** Drop end-to-end
-  E-order entirely; use point-to-point FIFO. Per-(connection)
-  ordering only; shortening admits reordering.
+The conflict, in erights' words:
 
-Sources for this section: [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11)
-(specifically [dtribble's 4-vat scenario](https://github.com/ocapn/ocapn/issues/11#issuecomment-1492469923));
-[agoric-sdk#40](https://github.com/Agoric/agoric-sdk/issues/40);
-[PlaygroundVat limitations.md](https://github.com/agoric-labs/PlaygroundVat/blob/master/docs/limitations.md);
-[Spritely Conundrum: Message Ordering #9 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/9).
+> "The conflict arises when, in the Preserve Passability scenario,
+> Alice had sent messages (like X) to Carol that hadn't yet
+> arrived in Carol's vat when she sends T to Bob. The reference to
+> Carol that Bob gets in T must be 'behind' X, which would seem to
+> make it different than other Resolved references Bob might have
+> to Carol. However, since this new reference is Resolved as well,
+> if Bob includes it as an argument in a message to Carol's vat,
+> it must arrive as a Near reference to Carol. However, because
+> Near references give immediate access, it may not arrive as a
+> Near reference until all prior messages, such as X from Alice,
+> have drained out."
+
+Without WormholeOp the implementation cannot satisfy all three at
+once for the Resolved case, so it gives up on (3) by downgrading
+to a Promise. That downgrade is the Lost Resolution Bug.
+
+### 3.3 markm's contemporary framing
+
+In [Spritely "Conundrum: Message Ordering" post #9](https://community.spritely.institute/t/conundrum-message-ordering/28/9)
+(local mirror: `notes/references/spritely-conundrum-message-ordering-28-post9.html`),
+markm uses the bug as part of his broader case for retreating from
+end-to-end E-order:
+
+> "Prior to the 'Lost Resolution Bug', E-Order appears to be
+> something delivered 'for free', falling out of the
+> implementation naturally. We can jump up and down and say 'look
+> at this thing we got at no extra cost!'"
+>
+> "This is indeed one of the considerations leading me to retreat
+> to Tyler's Waterken point-to-point fifo."
+
+So Lost Resolution is the historical moment that revealed E-order
+is **not** free in distributed implementations — it has
+"uncomfortable edges which either must be programmed around or be
+understood not to be exactly what we thought" (cwebber, in the
+[cap-talk thread](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ)
+linked from markm #9; local mirror
+`notes/references/google-groups-cap-talk-R5kc06XGqWs-WDraOqkQAgAJ.html.gz`).
+
+That motivates the view that something weaker (Waterken-style
+point-to-point FIFO, plus user-level e-order-like affordances) is
+the more pragmatic target.
+
+### 3.4 Relation to other named races
+
+| Name | Source | Specific scenario |
+|---|---|---|
+| Lost Resolution Bug | erights `passing-rules.html` | Far→Promise downgrade when a Carol-ref is sent through Bob; hashtables-with-Carol-key fail to unserialize |
+| WormholeOp / "the conflict" | erights `WormholeOp.html` | The 3-vat conflict between Partial Ordering, Going Home, and Preserve Passability |
+| Tribble 4-way race | Cap'n Proto `rpc.capnp` | Promise resolution across 4 parties — chained shortenings |
+| Midori four-vat promise shortening | dtribble in [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11) (= Tribble 4-way) | Same as above |
+| Auxiliary Data Problem | markm in Spritely #9; [agoric-sdk#6355](https://github.com/Agoric/agoric-sdk/pull/6355) | Agoric-internal name for related distributed-data races |
+
+These are related but distinct. The Lost Resolution Bug is
+specifically about *resolved-ness* preservation when an
+*already-resolved* Carol reference is passed through a 3-vat
+introduction. Tribble's 4-way race is about ordering across
+*unresolved* promise chains that shorten across multiple parties.
+Both stem from preserving E-order across indirect reference
+passing, but they manifest in different ways and admit different
+fixes.
+
+### 3.5 How the descendants address it
+
+- **Cap'n Proto** does not have the Lost Resolution Bug because it
+  does not carry the same hashtable-PassByCopy semantics that
+  motivated WormholeOp. It uses Embargo / Disembargo + the
+  forward-strictly-to-R rule for Tribble's 4-way race, which is a
+  related but separate issue.
+- **OCapN** uses a pipelined version of the
+  `provideFor` / `acceptFrom` protocol from
+  [erights `provideFor.html`](http://erights.org/elib/distrib/captp/provideFor.html)
+  for Granovetter introductions, but without WormholeOp. Because
+  OCapN does not currently specify hashtable-passability the same
+  way E does, the bug does not manifest in the same form.
+- **Ridley's `op:flush` proposal** addresses the
+  promise-shortening (Tribble 4-way) version, *not* the
+  Lost-Resolution (hashtable-key) version.
+- **Mark Miller's contemporary view** (Spritely #8, #9): drop
+  end-to-end E-order in favor of point-to-point FIFO, with
+  e-order recovered at the user level via "appropriate
+  affordances and conventions."
 
 ---
 
 ## 4. WormholeOp
 
-### 4.1 What it is
+### 4.1 What it actually is
 
-CapTP-of-E side-channel packet. When Vat A sends `bob!foo(carol)` — a
-three-party handoff — A also sends a WormholeOp directly to Carol's vat
-(Vat C) carrying the same gift information.
+WormholeOp is **not** a side-channel "shortcut packet." Per the
+canonical [erights `WormholeOp.html`](http://erights.org/elib/distrib/captp/WormholeOp.html),
+it is a way for VatA to **tunnel her unacknowledged A↔C VatTP
+traffic through VatB** so that VatB cannot deliver any message that
+depends on VatC's state until VatC has already processed that
+traffic. Wire shape:
 
-> "If `dest` is the receiving vat, [the source] should try sending the
-> packet's data to itself as encrypted VatTP communications originating with
-> `source`, processing sequence info so that redundant packets data are
-> simply ignored. The receiving vat should process this data ahead of
-> processing further requests from the sending vat."
-> — [WormholeOp — erights.org](http://www.erights.org/elib/distrib/captp/WormholeOp.html)
+```
+WormholeOp(packets :byte[],
+           source  :VatID,
+           dest    :VatID)
+```
 
-### 4.2 The handoff without WormholeOp
+Verbatim behavior, with the doc's note that it is unimplemented:
 
-1. A sends `bob!foo(carol)` to B; the message carries a gift nonce.
-2. B has no session with C yet; B opens one and calls `acceptFrom(C, nonce)`.
-3. C looks up the gift, binds it to B, returns the reference.
-4. B can now deliver `foo(carol)` and route any subsequent A-originated
-   messages addressed to Carol via the new B↔C path.
+> "*Not yet implemented, but needed to fix the Lost Resolution Bug.*
+>
+> If `dest` is the receiving vat, then it should try sending this
+> packets data to itself as encrypted VatTP communications
+> originating with `source`, processing sequence info so that
+> redundant packets data are simply ignored. The receiving vat
+> should process this data ahead of processing further requests
+> from the sending vat.
+>
+> If `dest` is not the receiving vat, and if it currently has a
+> live connection to `dest` or if it forms one while still
+> connected to the requesting vat, then it should wormhole these
+> bytes towards `dest` before allowing any further causality to
+> flow from the requesting vat through the receiving vat to
+> `dest`."
 
-The cost: every `foo(carol)` blocks on a B↔C round trip. Meanwhile A's next
-message — say `carol <- bar()` — can race B's `acceptFrom`, arriving at C
-before the gift has been registered. E-order is broken.
+VatTP encrypts the traffic, so VatB cannot read or tamper with the
+A↔C bits — VatB is just an untrusted relay.
 
-### 4.3 The handoff with WormholeOp
+### 4.2 The introduction protocol with WormholeOp
 
-A sends *two* things:
+The full 3-vat handoff for sharing a Far reference (also from
+`WormholeOp.html`):
 
-- `bob!foo(<gift-nonce>)` along the long path A→B (and eventually B→C).
-- A WormholeOp packet along the short path A→C, carrying the same gift info.
+```
+VatA to VatC:
+  def vine := NonceLocator <- provideFor(farCarol,
+                                          vatBID,
+                                          nonce,
+                                          carolSwissHash)
 
-C "processes this data ahead of further requests" — registers the gift
-immediately, so:
+VatA to VatB:
+  WormholeOp(/* unacknowledged encrypted A-to-C traffic */,
+             vatAID, vatCID)
+  ... Far3Desc(VatCSearchPath, VatCID, nonce,
+              carolSwissHash, vine) ...
 
-- B's eventual `acceptFrom(N)` succeeds with no extra round trip.
-- A's next message to Carol arrives at C with the binding already in place.
+VatB to VatC:
+  WormholeOp(/* unacknowledged encrypted A-to-C traffic */,
+             vatAID, vatCID)
+  def carolPromise := NonceLocator <- acceptFrom(vatAID, nonce,
+                                                  carolSwissHash, vine)
+```
 
-Sequence numbers ensure the gift packet that arrives second (whichever path
-that is) is recognized as a duplicate and ignored.
+The wormhole-tunneled traffic carries (among other things) the
+`provideFor` from A to C registering the gift. By the time VatB
+issues `acceptFrom` to VatC, the wormhole-forwarded `provideFor`
+has already been processed at VatC, *and* any prior Alice→Carol
+messages (like X) have drained.
 
-### 4.4 Relation to the Lost Resolution Bug
+### 4.3 Failure mode
 
-WormholeOp and the Lost Resolution Bug attack the same triangle (A, B, C)
-from opposite directions:
+Per `WormholeOp.html`:
 
-- WormholeOp **pre-stages a fresh gift** at C so that the handoff
-  registration is in place before subsequent messages need it. It addresses
-  the "introduction" version of the race.
-- Lost Resolution arises in the **promise-resolution** version of the race:
-  the binding being lost is not a fresh gift but an existing
-  promise→target forwarder being dismantled too eagerly.
+> "If VatB fails to deliver the wormhole data to VatC, then the
+> `acceptFrom` message will either arrive too early and find no
+> reference to Carol (fail safe), or arrive after the
+> `provideFor`, and thus after the preceding messages to VatC
+> (correct partial ordering).
+>
+> So, if VatA and VatB are cooperative, they are both assured that
+> the needed `provideFor` 'from' VatA will be processed by VatC
+> before VatC sees the corresponding `acceptFrom` from VatB. If
+> either is uncooperative, they cannot cause damage beyond that
+> accounted for by the object-level semantics. Because the data
+> takes redundant paths, neither side will get stuck waiting on
+> the other to timeout."
 
-WormholeOp doesn't fix Lost Resolution because it pre-stages a *gift table
-entry*, not a *forwarder*. The forwarder lives at B (the resolver of the
-promise), not at C; nothing A sends ahead of B's `Resolve` can keep B's
-forwarder alive after B chooses to discard it.
+### 4.4 What it solves and what it doesn't
+
+WormholeOp solves the 3-vat conflict between Partial Ordering,
+Going Home, and Preserve Passability (§3.2). That is exactly what
+makes the Lost Resolution Bug not happen — when WormholeOp is
+present, the implementation can carry a Resolved Carol-reference
+across the introduction without downgrading it.
+
+It is *not* a fix for Tribble's 4-way race or for promise-shortening
+in general. It is also a fundamentally different mechanism from
+Cap'n Proto's embargo: Cap'n Proto's embargo serializes a path
+*switchover* during promise resolution; WormholeOp ensures that
+*introduced references* arrive with all their prior dependencies
+already satisfied at the destination.
 
 ### 4.5 Why the descendants don't use it
 
-- **Cap'n Proto** drops WormholeOp entirely. Its embargo / disembargo +
-  forward-strictly-to-R is a different design that solves the broader race
-  (handoff *and* resolution) at the receiver, without an A→C side channel.
-- **OCapN** doesn't have a WormholeOp either; it relies on netlayer FIFO and
-  has not yet specified ordering behavior across handoffs — see `Implementation Guide.md`'s discussion of three-party handoffs around the
-  videos in `implementation-guide/`.
+- **Cap'n Proto** does not need it because it does not have the same
+  hashtable-PassByCopy passability semantics. For its own race
+  (Tribble 4-way) it uses Embargo / Disembargo + forward-strictly-to-R,
+  which is a different design.
+- **OCapN** uses a pipelined version of the
+  [erights `provideFor.html`](http://erights.org/elib/distrib/captp/provideFor.html)
+  protocol — `provideFor` registers the gift at C, and an
+  `acceptFrom` from B that arrives before the matching
+  `provideFor` queues at C until the `provideFor` resolves it (so
+  ordering is correct in the cooperative case, fail-safe
+  otherwise). OCapN does not currently carry the
+  Resolved-vs-Unresolved distinction the Lost Resolution Bug hangs
+  on, so the bug does not manifest in the same form.
+- markm (Spritely thread #9) explicitly cites WormholeOp's cost as
+  one reason to retreat from end-to-end E-order to point-to-point
+  FIFO with user-level affordances.
 
-Sources: [WormholeOp](http://www.erights.org/elib/distrib/captp/WormholeOp.html);
-[acceptFrom()](http://www.erights.org/elib/distrib/captp/acceptFrom.html);
-[3-Vat Granovetter](http://erights.org/elib/distrib/captp/3vat.html);
-[PlaygroundVat limitations.md](https://github.com/agoric-labs/PlaygroundVat/blob/master/docs/limitations.md)
-("ACK ... interacts with the ordering properties of three-party handoffs to
-implement the WormholeOp").
+Sources: [`WormholeOp.html`](http://erights.org/elib/distrib/captp/WormholeOp.html);
+[`acceptFrom.html`](http://erights.org/elib/distrib/captp/acceptFrom.html);
+[`provideFor.html`](http://erights.org/elib/distrib/captp/provideFor.html)
+(the gift-table mechanism, including the case where `acceptFrom`
+arrives ahead of `provideFor` and the resulting promise queue is
+how ordering is preserved without WormholeOp);
+[`3vat.html`](http://erights.org/elib/distrib/captp/3vat.html) (stub —
+referenced for completeness, the live page redirects to the others).
 
 ---
 
@@ -326,29 +481,46 @@ Waterken-style point-to-point FIFO row, not the E-order row.
 
 ### E and CapTP-of-E
 
-- [erights.org: Partially-Ordered Message Delivery](https://erights.org/elib/concurrency/partial-order.html)
+- [erights.org: Partially-Ordered Message Delivery](http://erights.org/elib/concurrency/partial-order.html) — Full / Tree / Partial Order tiers; per-reference FIFO
+- [erights.org: Four Party Partial Order](http://erights.org/elib/equality/after-both.html) — joins via `E.join`
+- [erights.org: WormholeOp](http://erights.org/elib/distrib/captp/WormholeOp.html) — verbatim wire shape, "the conflict solved by WormholeOp," all four solution candidates
+- [erights.org: passing-rules.html#lost-resolution](http://erights.org/elib/equality/passing-rules.html#lost-resolution) — **the authoritative Lost Resolution Bug definition**
+- [erights.org: provideFor](http://erights.org/elib/distrib/captp/provideFor.html) — gift-table 3PH protocol; queue-on-acceptFrom-arrives-first behavior
+- [erights.org: acceptFrom](http://erights.org/elib/distrib/captp/acceptFrom.html)
+- [erights.org: DeliverOp](http://erights.org/elib/distrib/captp/DeliverOp.html) — `whenMoreResolved` animation referenced by markm in ocapn/ocapn#11
 - [erights.org: Eventual Send Expression](http://erights.org/elang/kernel/SendExpr.html)
 - [erights.org: CapTP — index](http://erights.org/elib/distrib/captp/index.html)
 - [erights.org: CapTP — The 4 Tables](http://erights.org/elib/distrib/captp/4tables.html)
-- [erights.org: CapTP — 3-Vat Granovetter](http://erights.org/elib/distrib/captp/3vat.html)
-- [erights.org: WormholeOp](http://www.erights.org/elib/distrib/captp/WormholeOp.html)
-- [erights.org: acceptFrom()](http://www.erights.org/elib/distrib/captp/acceptFrom.html)
+
+The whole erights.org website source is open; clone
+[`erights/erights-org-website`](https://github.com/erights/erights-org-website)
+for offline reading.
 
 ### Cap'n Proto
 
 - [Cap'n Proto: RPC Protocol](https://capnproto.org/rpc.html)
-- [`capnproto/c++/src/capnp/rpc.capnp`](https://github.com/capnproto/capnproto/blob/master/c++/src/capnp/rpc.capnp) — Embargo, Disembargo, Tribble 4-way race comments
+- [`capnproto/c++/src/capnp/rpc.capnp`](https://github.com/capnproto/capnproto/blob/master/c++/src/capnp/rpc.capnp) — Embargo, Disembargo, Tribble 4-way race comments. Local mirror: `notes/references/capnproto-rpc.capnp`
 - [`capnproto/c++/src/capnp/rpc.c++`](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/capnp/rpc.c%2B%2B) — embargo enforcement
 - [Promise Pipelining in Cap'n Proto RPC — Lobsters discussion](https://lobste.rs/s/0ykbk6/promise_pipelining_cap_n_proto_rpc)
 
 ### The Lost Resolution Bug
 
 - [agoric-sdk#40: deny passing Presences in arguments?](https://github.com/Agoric/agoric-sdk/issues/40)
+- [agoric-sdk#6355: cheap auxdata](https://github.com/Agoric/agoric-sdk/pull/6355) (markm's "Auxiliary Data Problem" approximation)
 - [PlaygroundVat — limitations.md](https://github.com/agoric-labs/PlaygroundVat/blob/master/docs/limitations.md)
-- [cap-talk: Goblin semantics, and thinking through / planning for CapTP](https://groups.google.com/g/cap-talk/c/xWv2-J62g-I)
+- [cap-talk: Goblin semantics, and thinking through / planning for CapTP](https://groups.google.com/g/cap-talk/c/xWv2-J62g-I) — local mirror `notes/references/google-groups-cap-talk-xWv2-J62g-I.html.gz`
+- [cap-talk thread linked from markm Spritely #9](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ) — local mirror `notes/references/google-groups-cap-talk-R5kc06XGqWs-WDraOqkQAgAJ.html.gz` (cwebber's `carol~.x()` / `bob~.y(carol)` / `carol~.z()` example)
 
 ### Mark Miller's contemporary view
 
-- [Spritely Conundrum: Message Ordering #8 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/8)
-- [Spritely Conundrum: Message Ordering #9 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/9)
-- [Spritely Conundrum: Message Ordering — thread index](https://community.spritely.institute/t/conundrum-message-ordering/28)
+- [Spritely Conundrum: Message Ordering #8 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/8) — local mirror `notes/references/spritely-conundrum-message-ordering-28-post8.html`
+- [Spritely Conundrum: Message Ordering #9 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/9) — local mirror `notes/references/spritely-conundrum-message-ordering-28-post9.html`
+- [Spritely Conundrum: Message Ordering — thread index](https://community.spritely.institute/t/conundrum-message-ordering/28) — local mirror `notes/references/spritely-conundrum-message-ordering-28.json`
+- Excerpts in readable form: `notes/references/spritely-conundrum-message-ordering-excerpts.md`
+
+### Related ocapn issues (local mirrors)
+
+- `notes/references/ocapn-ocapn-issue-15.json` — "Replacing deliver.rdr with op:listen?"
+- `notes/references/ocapn-ocapn-issue-24.json` — referenced by zarutian in the wire-trace example
+- `notes/references/ocapn-ocapn-issue-236.json` — original promise-shortening discussion before #11
+- `notes/references/ocapn-ocapn-issue-265.json` — Two Generals concern in 3PH
