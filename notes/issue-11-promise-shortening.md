@@ -398,7 +398,301 @@ to keep it.
   pipelining" alternative on the table (erights' §5.2 vatC-side embargo
   for Ridley; Cap'n Proto's existing receiver-side queuing).
 
-## 7. Where things stand
+## 7. Interrogating the `op:flush` design
+
+This section pokes at the current proposal (§5.5) to get a concrete
+sense of overhead, where it wins, and where the holes are. It is
+deliberately critical; nothing here is a verdict.
+
+### 7.1 Overhead in concrete scenarios
+
+Notation: each scenario counts wire messages added by the flush
+machinery and the latency in round trips before the system reaches
+"shortened state" (Alice can send directly to the eventual settling
+vat with FIFO preserved).
+
+#### Scenario A: 3-vat shortening, no pipelined messages
+
+Setup: Alice did `bob!x()` and is awaiting the result. She has not
+sent any further messages on `p1`. Bob is ready to shorten because
+his `p2` resolved to Carol's object.
+
+Even though there is nothing to flush, the proposal flushes anyway
+("Flushing must always occur as part of promise shortening, even if
+Alice never sent a message to Bob.").
+
+Wire cost added by flush:
+- Bob → Alice: `op:flush` (1 msg)
+- Alice → Bob: flush-done `op:deliver-only` (1 msg)
+- = **2 extra messages, 1 extra A↔B RTT**, all overhead. Strictly waste
+  in the common case where no messages are pipelined.
+
+#### Scenario B: 3-vat shortening, with pipelined messages
+
+Setup: same as A, but Alice has sent `z()` on `p1` and is about to
+send `w()`. The messages are flowing A→B→C.
+
+Wire cost added by flush:
+- Bob → Alice: `op:flush` (1 msg)
+- Alice → Bob: flush-done (1 msg)
+- = **2 extra messages, 1 extra A↔B RTT**.
+
+Pipelining loss: any application sends Alice issues during the flush
+window plus the subsequent 3PH (~2 RTTs total) buffer locally at
+Alice's `p'` rather than flowing to Carol. Cap'n Proto's embargo, by
+contrast, would already have the new direct path open and could
+queue at the receiver.
+
+This is the only scenario where flush is doing useful work — and
+even here, the extra A↔B RTT is purely serial with the 3PH.
+
+#### Scenario C: 4-vat chain shortening
+
+Setup: Alice → Bob → Carol → Derek. Each link could be shortened.
+Per Ridley's diagram, each shortening step requires its own flush.
+
+Wire cost (worst case, sequential shortenings):
+- Flush B→A and back (2 msgs)
+- 3PH B↔A↔C (3 msgs)
+- Flush C→A and back (2 msgs)
+- 3PH C↔A↔D (3 msgs)
+- = **10 extra messages, 4 sequential RTTs** to reach fully shortened
+  A→D state.
+
+Plus: each of those flush-dones is sent on a different connection
+(A↔B, then A↔C). Per-connection FIFO doesn't relate them, so the
+ordering between the two flush dones requires the protocol's
+sequencing — Ridley's diagram notes "the 'flush done' from Bob to
+Carol is dependent on the 'flush done' from Alice to Carol", which
+hints at a coordination requirement that the spec doesn't yet pin
+down.
+
+For an N-vat chain, this is **O(5(N−1))** messages and **O(2(N−1))**
+sequential RTTs. Linear in chain length — a real cost.
+
+Cap'n Proto avoids this entirely: chains are *never* shortened past
+the first remote ref ("forward strictly to R"). Constant overhead
+in chain length, but messages travel N hops forever.
+
+#### Scenario D: many promises shortening at once
+
+Setup: Alice has 100 promises hosted by Bob. Bob's outputs all
+resolve more or less at the same time and Bob wants to shorten all
+of them.
+
+Wire cost: 200 flush messages (1 op:flush + 1 flush-done per
+promise) before any 3PH starts.
+
+The protocol has no batching primitive. Each shortening event is
+independent. A worthwhile follow-up is a batched `op:flush-many` or
+making `op:flush` carry a sequence of resolvers.
+
+#### Scenario E: shortening with an idle Alice
+
+Setup: Alice has the promise but hasn't sent anything for a long
+time. Bob shortens.
+
+Same as Scenario A: 2 messages of pure overhead. The "no messages to
+flush" case is indistinguishable from "many messages to flush" from
+Bob's vantage point, so the always-flush rule pessimizes the common
+case.
+
+### 7.2 Comparison of overhead vs Cap'n Proto
+
+| Scenario | `op:flush` | Cap'n Proto embargo |
+|---|---|---|
+| 3-vat shortening, no pending sends | 2 msgs, +1 RTT serial with 3PH | 0 msgs (no embargo needed if no pending sends — receiver knows) |
+| 3-vat shortening, with pending sends | 2 msgs, +1 RTT serial with 3PH; messages buffer at sender | 2 msgs (Disembargo loop), parallel with new path; messages buffer at receiver |
+| 4-vat chain shortening | O(5N) msgs, O(2N) sequential RTTs | 0 shortening msgs (chain frozen); messages cost N hops forever |
+| Concurrent multi-promise shortening | O(2K) msgs for K promises | O(2K) Disembargos but no protocol-level serialization |
+| Pipelining during shortening | Lost (messages buffer at Alice) | Preserved (queued at receiver) |
+
+The `op:flush` design generally costs *more* messages and *more*
+serial latency per shortening event, in exchange for the availability
+property that Cap'n Proto explicitly trades away.
+
+### 7.3 Holes and unresolved issues
+
+#### 7.3.1 Always-flush wastes work
+
+The current proposal mandates a flush on every shortening, even when
+Alice has not pipelined. In a system where shortening is common but
+pipelining is rare, this is significant overhead. A "did I receive
+any messages on this promise" hint from Bob's side could let Bob
+skip the flush — but determining this from Bob's side is racy without
+explicit signalling. A sequence-number scheme on pipelined messages
+would let Bob say "I've seen up to seq N, do you confirm" and skip
+the flush if Alice confirms; this trades the always-flush cost for
+sequence-tracking state.
+
+#### 7.3.2 Latency penalty is serial with 3PH
+
+The flush dance is a full A↔B round trip *before* Bob can begin the
+3PH. The 3PH itself is another ~1.5 RTTs. Total: ~2.5 RTTs to reach
+shortened state. Cap'n Proto's embargo runs in parallel with the new
+path being established, so it's effectively ~1 RTT.
+
+erights' §5.2 alternative (move the embargo to vatC) addresses the
+pipelining lost during the buffer window but does not address the
+extra serial RTT — that is intrinsic to the resolver-initiated
+design, because Bob has to wait for confirmation that Alice has
+quiesced.
+
+#### 7.3.3 Pipelining is lost during the buffer window
+
+Messages Alice's application sends during the flush + 3PH window
+buffer locally in `p'` rather than flowing toward the destination.
+For ~2 RTTs of latency, Alice's outbound throughput on this promise
+is zero on the wire.
+
+The §5.2 alternative — receiver-side embargo at vatC — recovers most
+of this. But Ridley deferred it as too complex.
+
+#### 7.3.4 Concurrent resolution races
+
+What happens if Bob has already sent the resolution message
+(resolving `r` directly via op:deliver-only on the import) and *then*
+sends `op:flush`? By A↔B FIFO, Alice receives the resolution first,
+fulfills `r` with the resolved value, and `r` is no longer in
+"resolver" state when `op:flush` arrives.
+
+The spec's only treatment of this is "If the position is not in use,
+the receiver MUST break flush-done-resolver." But "in use" is
+ambiguous after fulfillment — the export-table position may still
+hold a reference, just one that's been fulfilled. The spec needs
+language that says either "MUST be unresolved" or "SHOULD be treated
+as a no-op" or similar.
+
+A more pernicious case: Bob sends `op:flush` and *concurrently*
+sends a resolution (from a different turn of Bob's event loop).
+Both are on the Bob→Alice wire. The resolution might pass `op:flush`
+or vice versa depending on Bob's local turn ordering. Either order
+needs a defined outcome.
+
+#### 7.3.5 Multi-session resolver sharing
+
+The spec says "replace the export-table entry at the same position
+with `r'`". This is per-session. But Alice's resolver `r` is a
+local object — Alice could have exported it in another session
+(e.g., to a third party that also holds the promise). The swap only
+affects Bob's session; from Dave's session, `r` is now fulfilled
+with `p'`, and Dave's listener observes the resolution to a local
+promise that Dave has no import for.
+
+Concrete consequence: Dave's representation of "the promise"
+resolves to something Dave can't reach. The spec doesn't address
+multi-session resolver sharing, which is a real possibility in
+networks where promises are passed around.
+
+#### 7.3.6 Backpressure / unbounded buffer growth
+
+Messages buffer in `p'` until the 3PH completes. There is no
+protocol-level backpressure. Under partial failure (Bob slow, 3PH
+stalled, Carol unreachable), Alice's `p'` queue grows without bound.
+Cap'n Proto's receiver-side embargo has the same fundamental issue
+but at least the messages have already been transmitted, so the
+sender's heap isn't pinned.
+
+A real implementation needs a back-pressure story (e.g., refuse new
+sends after some threshold, or surface a "shortening in progress"
+signal to the application).
+
+#### 7.3.7 Multi-hop chain coordination is underspecified
+
+The spec says "each shortening step that re-routes a promise across
+a vat boundary MUST be preceded by its own `op:flush`." But the
+ordering between flushes on different links is not pinned down.
+Ridley's 4-vat diagram annotation — "the flush done from Bob to
+Carol is dependent on the flush done from Alice to Carol" — hints
+that there are inter-flush happens-before relationships that need
+either explicit correlation or a more careful argument about why
+local FIFO suffices.
+
+If two intermediaries shorten concurrently, can a partial result
+emerge where one chain link is short and the other is mid-flush?
+What invariants hold during that window?
+
+#### 7.3.8 Aborted flush mid-protocol
+
+If Alice or Bob aborts the session between `op:flush` and the
+completion of the 3PH, the spec needs to say what state Alice's
+local `p'` is in. Options:
+- Break `p'` with the session-abort reason.
+- Treat the session abort as a regular promise-break and propagate
+  through `p'` to all buffered messages.
+- Distinguish "flush succeeded but 3PH aborted" from "flush itself
+  aborted" and surface different errors.
+
+The current spec is silent on all of this.
+
+#### 7.3.9 Flush-done payload is unconstrained
+
+The spec says Alice invokes `flush-done-resolver` with
+`op:deliver-only` and "the args of the invocation are unconstrained
+by this specification; the act of delivery is what conveys
+completion."
+
+Two consequences:
+- Different implementations may put different things in the args,
+  hurting interoperability in cases where Bob does want to read them.
+- The flush-done channel could be repurposed by a malicious sender
+  to deliver arbitrary messages to whatever Bob put behind the
+  callback. That's mostly fine because Bob chose the callback, but
+  a misimplementation could leak.
+
+A canonical empty-args or canonical symbol like `'flush-done` would
+reduce ambiguity.
+
+#### 7.3.10 What if `r` was given to Alice via 3PH, not exported by Alice?
+
+The spec specifies `target-resolver` as "in the receiver's export
+table." But what if the promise was acquired by Alice via 3PH from
+a fourth party? Alice may not have an export for the resolver — the
+resolver may live elsewhere and Alice may be a transparent forwarder.
+
+The proposal implicitly assumes the resolver was created by Alice's
+op:deliver. Other ways promises can come into existence (op:listen
+forwarding, 3PH, sturdy-ref handoff) may not fit this assumption.
+
+### 7.4 Where flush genuinely wins
+
+In fairness, there are real properties the design buys that
+alternatives don't:
+
+- **Availability after shortening.** Once shortened, Bob can go
+  offline and Alice→Carol still works. Cap'n Proto can never offer
+  this with its "forward strictly to R" rule.
+- **No new ordering primitive.** Flush only relies on per-connection
+  FIFO from the netlayer — no WormholeOp, no embargo IDs, no causal
+  metadata.
+- **Wire-visible.** The op is observable in the message stream, easy
+  to debug, and not hidden in protocol internals.
+- **Resolver-initiated fits the "Bob knows when he's ready" model.**
+  Cap'n Proto's receiver-initiated approach requires the receiver
+  to detect resolution before any party has committed to switching
+  paths. Resolver-initiated is more aligned with how application
+  code actually decides to forward results.
+
+### 7.5 Summary of the case against (so far)
+
+- The always-flush rule is wasteful in the no-pipelining common case
+  and could be eliminated with a sequence-number protocol.
+- The serial-with-3PH RTT is intrinsic to resolver-initiation and
+  isn't fixed by the §5.2 vatC-side enhancement.
+- Pipelining is lost during the buffer window; the §5.2 enhancement
+  recovers most of it but adds complexity.
+- Multi-hop chain coordination is underspecified; 4+ vat scenarios
+  may have invariants the current spec text does not enforce.
+- Multi-session resolver sharing, concurrent resolution races, and
+  aborted-flush handling are all undefined.
+- Backpressure is the application's problem, not the protocol's.
+
+None of these are fatal. Several are addressable with relatively
+small spec amendments. But the message-count and latency overhead is
+real and growing in the multi-hop case, which is exactly the case
+erights opens the issue with as the motivation.
+
+## 8. Where things stand
 
 - The group has *not* settled on a single ordering guarantee statement.
   erights' position — the only useful FIFO is end-to-end vat-to-object —
@@ -420,7 +714,7 @@ to keep it.
 - Tribble's 4-party scenario and the Two Generals concern are
   acknowledged but not blocking.
 
-## 8. Sources
+## 9. Sources
 
 ### Primary thread
 - [ocapn/ocapn#11 — Promise Shortening](https://github.com/ocapn/ocapn/issues/11)
@@ -445,9 +739,9 @@ to keep it.
 - [erights.org: __order Miranda method](http://www.erights.org/javadoc/org/erights/e/elib/prim/MirandaMethods.html)
 - Local: `notes/message-ordering.md` for surrounding terminology.
 
-## 9. Brainstorming alternatives
+## 10. Brainstorming alternatives
 
-### 9.1 `delivered-after` — opt-in invocation barriers (kumavis)
+### 10.1 `delivered-after` — opt-in invocation barriers (kumavis)
 
 **Idea.** Add an optional `delivered-after` parameter to `op:deliver`
 (and `op:deliver-only`) carrying a list of promise references — possibly
