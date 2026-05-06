@@ -130,8 +130,67 @@ onto the netlayer.
 - Implementation guide describes the netlayer as a "bidirectional FIFO"
   — [`implementation-guide/Implementation Guide.md` L43](https://github.com/kumavis/ocapn/blob/b0a681d/implementation-guide/Implementation%20Guide.md#L43).
 
-This is point-to-point FIFO between two peers in a single session — no
-explicit per-reference E-order, no global ordering.
+This is **point-to-point FIFO between two peers in a single CapTP
+session** — no explicit per-reference E-order, no global ordering. As
+written, ordering of messages addressed to a particular promise survives
+shortening *only* incidentally, by the FIFO of whichever pairwise
+session each message happens to traverse.
+
+#### Proposed clarification: end-to-end reference FIFO
+
+Mark Miller's reading in [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11)
+is that the useful guarantee — and what programmers expect when they
+hold a promise — is stronger:
+
+> "The 'points' I meant are the sending vat (vatA) and the receiving
+> object (Charlie), respectively. This effectively implies: 'sending
+> object (Alice) and receiving object (Charlie), respectively'. If we
+> don't mean that, then I fail to see how the programmer benefits from
+> the FIFO guarantee. Programming with FIFO is too hard to do
+> correctly. Programming with 'almost always FIFO' is too hard to tell
+> that you did not code correctly." — erights, ocapn/ocapn#11
+
+This corresponds to **end-to-end reference FIFO**: messages sent on the
+same *logical* reference are delivered in send order at the
+destination, even when the wire-level reference identity changes
+during shortening. (See
+[`notes/issue-11-promise-shortening.md` §3.4](./issue-11-promise-shortening.md)
+for the precise framing.) The current spec text and the netlayer
+guarantee, taken together, do not deliver this — they deliver only
+per-CapTP-session FIFO.
+
+**Why promise shortening breaks the current property.** Promise
+shortening is the optimization where a promise originally hosted at
+some intermediary B is re-routed so messages no longer have to pass
+through B on their way to the eventual settling vat C. The two ways
+this currently affects ordering:
+
+- Before shortening, messages from A on the promise travel A→B and
+  are forwarded by B to C. After shortening, they travel A→C
+  directly. *These are two different wire references on two different
+  CapTP sessions.* Per-session FIFO does not relate them.
+- The result: a message Alice sent before shortening (forwarded
+  through B) and a message Alice sent after shortening (sent direct
+  to C) can arrive at the destination in either order, depending on
+  network timing. The application sees one logical promise; the
+  protocol sees two references; the FIFO contract speaks only about
+  the protocol's view.
+
+**Active proposals to close the gap** (see
+[`notes/issue-11-promise-shortening.md`](./issue-11-promise-shortening.md)
+and the prototype branches `claude/ocapn-op-flush-WNRFV` and
+`claude/ocapn-deliver-after-WNRFV`):
+
+| Proposal | Strengthens contract to | Mechanism |
+|---|---|---|
+| `op:flush` (Ridley, ocapn/ocapn#11) | end-to-end reference FIFO | Resolver-initiated flush before each shortening event |
+| `delivered-after` on `op:deliver` | per-message opt-in to stronger ordering | Caller-set list of barrier promises that must settle before invocation |
+| Per-promise sequence numbers | end-to-end reference FIFO (intrinsic) | Sender tags pipelined messages with seq; destination reorders |
+| Hybrid: keep per-session FIFO + `delivered-after` | per-session FIFO baseline, opt-in stronger | Embraces the disagreement, lowest protocol cost |
+
+None of these is yet adopted into the spec. The headline question for
+the spec — *what ordering guarantee does OCapN actually promise once
+shortening is admitted as a protocol-level optimization?* — is open.
 
 ### 2.2 E (the language)
 
