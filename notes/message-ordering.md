@@ -131,12 +131,29 @@ onto the netlayer.
   — [`implementation-guide/Implementation Guide.md` L43](https://github.com/kumavis/ocapn/blob/b0a681d/implementation-guide/Implementation%20Guide.md#L43).
 
 This is **point-to-point FIFO between two peers in a single CapTP
-session** — no explicit per-reference E-order, no global ordering. As
-written, ordering of messages addressed to a particular promise survives
-shortening *only* incidentally, by the FIFO of whichever pairwise
-session each message happens to traverse.
+session**. In Mark Miller's vocabulary, this is *fail-stop FIFO*
+([thesis §19.1](./references/markm-thesis/chapter-19-delivering-messages-in-e-order.md)),
+which the thesis explicitly argues is "too weak" as a baseline for
+distributed object capability systems
+([§19.2: "FIFO is Too Weak"](./references/markm-thesis/chapter-19-delivering-messages-in-e-order.md)):
 
-#### Proposed clarification: end-to-end reference FIFO
+> "Suppose that Carol is a collection, the x() is an update message
+> that deletes an entry from the collection, and that w() is a query
+> message. Alice knows that if she sends queries following an update,
+> then the queries, if they are delivered, will only be delivered
+> after the updates. However, if she sends Bob `y(carol)` in order to
+> delegate some of this querying activity to Bob, within a system
+> providing only fail-stop FIFO, Bob's query may be delivered before
+> Alice's update, and retrieve from Carol the entry Alice assumed
+> was inaccessible. Even under cooperative assumptions, this is
+> dangerous." — markm, *Robust Composition* §19.2
+
+Under the OCapN spec as written, ordering of messages addressed to a
+particular promise survives shortening *only* incidentally, by the
+FIFO of whichever pairwise session each message happens to traverse —
+exactly the "FIFO is too weak" failure mode markm describes.
+
+#### Proposed clarification: end-to-end reference FIFO (= E-ORDER)
 
 Mark Miller's reading in [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11)
 is that the useful guarantee — and what programmers expect when they
@@ -153,8 +170,12 @@ hold a promise — is stronger:
 This corresponds to **end-to-end reference FIFO**: messages sent on the
 same *logical* reference are delivered in send order at the
 destination, even when the wire-level reference identity changes
-during shortening. (See
-[`notes/issue-11-promise-shortening.md` §3.4](./issue-11-promise-shortening.md)
+during shortening. In Miller's thesis vocabulary this is **E-ORDER** —
+fail-stop FIFO upgraded with **forks** so that "the reference Bob
+receives from Alice has no more power in Bob's hands than it had in
+Alice's"
+([thesis §19.3](./references/markm-thesis/chapter-19-delivering-messages-in-e-order.md)).
+See [`notes/issue-11-promise-shortening.md` §3.4](./issue-11-promise-shortening.md)
 for the precise framing.) The current spec text and the netlayer
 guarantee, taken together, do not deliver this — they deliver only
 per-CapTP-session FIFO.
@@ -539,6 +560,14 @@ Waterken-style point-to-point FIFO row, not the E-order row.
 - [`implementation-guide/Implementation Guide.md`](https://github.com/kumavis/ocapn/blob/b0a681d/implementation-guide/Implementation%20Guide.md)
 
 ### E and CapTP-of-E
+
+- **Mark S. Miller, *Robust Composition: Towards a Unified Approach to Access Control and Concurrency Control*, Johns Hopkins PhD thesis, May 2006** — local mirror by chapter under
+  [`notes/references/markm-thesis/`](./references/markm-thesis/).
+  Authoritative for E-ORDER. Especially:
+  - [Chapter 19 — Delivering Messages in E-ORDER](./references/markm-thesis/chapter-19-delivering-messages-in-e-order.md) (§19.1 fail-stop FIFO; §19.2 "FIFO is Too Weak"; §19.3 forks; §19.4 "CAUSAL Order is Too Strong"; §19.5 joins; §19.6 fairness)
+  - [Chapter 16 — Promise Pipelining](./references/markm-thesis/chapter-16-promise-pipelining.md)
+  - [Chapter 17 — Partial Failure](./references/markm-thesis/chapter-17-partial-failure.md) (`whenMoreResolved`)
+  - [Chapter 18 — The when-catch Expression](./references/markm-thesis/chapter-18-the-when-catch-expression.md)
 
 - [erights.org: Partially-Ordered Message Delivery](http://erights.org/elib/concurrency/partial-order.html) — Full / Tree / Partial Order tiers; per-reference FIFO
 - [erights.org: Four Party Partial Order](http://erights.org/elib/equality/after-both.html) — joins via `E.join`

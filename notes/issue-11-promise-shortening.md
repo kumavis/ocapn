@@ -176,23 +176,41 @@ the gap.
 This is a special case of *causal order*. Causal order in
 distributed systems says: if m₁ causally precedes m₂ (m₂ was sent
 after m₁'s effects were observable to the sender), m₂ is delivered
-after m₁. Three increasingly weak slices of causal order are at
-play here:
+after m₁. Mark Miller's thesis frames the design space directly:
+fail-stop FIFO is "too weak" (§19.2), CAUSAL order is "too strong"
+(§19.4), and **E-ORDER** sits between them as the right point.
+
+> "E doesn't provide CAUSAL order because we don't know how to
+> enforce it among mutually defensive machines. […] Enforcing
+> CAUSAL order would require, in the case where VatB sends `o()`
+> on `c2` in reaction to the arrival of `y()`, that `o()` must
+> then be delivered only after `x()`. In order to enforce CAUSAL
+> order on a possibly misbehaving VatB, somehow, the arrival of
+> `y(carol)` from VatA would have to preclude this previously
+> present possibility. In the absence of mutually-reliant
+> hardware, this seems difficult.
+>
+> By contrast, E-ORDER only requires restricting the new
+> possibilities the newly arriving reference-to-Carol provides to
+> VatB, rather than the removal of previously present
+> possibilities."
+> — markm, *Robust Composition* §19.4
+
+Three increasingly weak slices of causal order are at play here:
 
 | Slice | Definition | Status in OCapN |
 |---|---|---|
-| Causal order (general) | Across all senders, references, and forwarding paths, m₁ → m₂ implies m₂ delivered after m₁ | Not attempted; would require happens-before tracking (vector clocks etc.) |
-| End-to-end reference FIFO | One sender, one logical reference: messages sent in order on the same promise are delivered in order, even across shortening | What `op:flush`, per-promise seq, and erights' position are all targeting |
-| Per-connection FIFO | One sender, one wire reference, one connection: messages on a single CapTP session arrive in send order | What netlayers already provide; what Ridley's reading takes the spec to mean today |
+| Full causal order | Across all senders, references, and forwarding paths, m₁ → m₂ implies m₂ delivered after m₁ | Explicitly **not** attempted (markm thesis §19.4: "we don't know how to enforce it among mutually defensive machines") |
+| E-ORDER (= end-to-end reference FIFO with forks) | Per-sender, per-logical-reference: messages sent in order on the same promise are delivered in order, even across shortening or 3PH | What `op:flush`, per-promise seq, and erights' position are all targeting; markm's thesis §19.3 |
+| Fail-stop FIFO (per-CapTP-session) | One sender, one wire reference, one connection: messages on a single CapTP session arrive in send order | What netlayers already provide; what Ridley's reading takes the spec to mean today; markm thesis §19.1 calls this "too weak" alone |
 
-End-to-end reference FIFO is the specific slice of causal order
-that this issue is about. It's the property an application
-programmer naturally expects when they hold a promise and call
-`p.foo()` then `p.bar()`. Anything stronger (cross-reference
-causality, multi-vat happens-before) is out of scope; OCapN
-explicitly does not promise it. Anything weaker (per-session FIFO
-only) breaks programmer expectations precisely at shortening
-events.
+E-ORDER is the specific slice of causal order this issue is about.
+It's the property an application programmer naturally expects when
+they hold a promise and call `p.foo()` then `p.bar()`. Anything
+stronger (full causal order) is out of scope by markm's
+own argument. Anything weaker (per-CapTP-session FIFO alone)
+breaks programmer expectations precisely at shortening events,
+which is the "too weak" condition.
 
 What flush is *not* doing:
 
