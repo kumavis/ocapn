@@ -846,3 +846,208 @@ of `delivered-after` whose dependency list is generated automatically.
   yes; worth pinning down how a `desc:sig-envelope` resolves for the
   purposes of the wait.
 
+### 10.2 Per-promise sequence numbers (alternative to flush)
+
+**Idea.** Replace the flush dance with intrinsic per-message ordering.
+Every pipelined `op:deliver` / `op:deliver-only` addressed to a
+promise carries a sequence number set by the original sender. The
+destination of the promise reorders by sequence before invoking. No
+flush, no embargo, no synchronization event around shortening —
+shortening becomes fully transparent.
+
+```text
+<op:deliver to-desc           ; desc:export | desc:answer | desc:promise
+            args              ; sequence
+            answer-pos        ; positive integer | false
+            resolve-me-desc   ; desc:import-object | desc:import-promise
+            seq>              ; positive integer | false
+```
+
+`seq` is per-(sender, target-promise) and monotonically increasing on
+the sender side. `false` means "unordered" (sender does not request
+sequencing, receiver invokes in delivery order — current behavior).
+
+**Stance on the disagreement.** This is a different way to land on
+row 3 of the table in §3.4: vat-to-object FIFO end-to-end. More
+precisely, it provides **per-(sender, target-promise) FIFO**, which
+is what users typically mean when they say "vat-to-object FIFO" — if
+you sent `z()` then `w()` on the same promise, the destination of
+that promise sees `z()` first regardless of path.
+
+**How it relates to flush.** Flush is a *per-shortening* coordination
+event between sender and resolver. Per-promise seq is a *per-message*
+tag that lets the destination reorder unilaterally. Where flush asks
+"have I quiesced on the old path before I open the new one?", seq
+asks "has the message I'm about to invoke had all its predecessors
+arrive?" The first is a control-plane handshake; the second is a
+data-plane invariant.
+
+**How it relates to `delivered-after`.** They compose naturally. Seq
+gives free per-promise FIFO; `delivered-after` gives optional
+cross-promise dependencies. A receiver implementing both invokes a
+message only when (a) all earlier seq messages on this promise have
+been invoked AND (b) all `delivered-after` barriers have settled.
+
+**Pros.**
+
+- **Zero per-shortening overhead.** Shortening is transparent; no
+  flush messages, no buffer window, no extra RTT.
+- **Pipelining never blocked.** Messages flow as fast as the
+  connections allow. Reordering happens at the destination, in the
+  background.
+- **O(1) per message regardless of chain length.** A 4-vat or 100-vat
+  chain costs the same as a 3-vat chain. The flush approach is
+  O(N) in chain length.
+- **Eliminates several open issues from §7.3.** Always-flush waste,
+  intrinsic serial RTT, multi-hop coordination ambiguity, and
+  concurrent-resolution races all go away when the synchronization
+  is "wait until the predecessor seq arrived" rather than "execute
+  a flush dance."
+- **Composable with multiple senders.** If Alice and Dave both
+  pipeline on the same promise (via 3PH), each has their own seq
+  space. Per-(sender, target) is robust to sharing.
+
+**Cons / open questions.**
+
+- *Per-message wire overhead.* A varint per pipelined message. Small
+  but ubiquitous; flush's overhead is concentrated in bursts.
+  Roughly: if you send K messages per shortening event, flush costs
+  ~2 messages of overhead per event; seq costs ~K varints. Crossover
+  is at K ≈ 2 messages per shortening event. Real workloads with
+  many messages per shortening may favor flush; real workloads with
+  many shortenings per few messages may favor seq.
+- *Receiver-side state.* Per-promise "highest contiguous seq
+  delivered" plus a reorder buffer. Bounded by network reorder
+  window in the common case; unbounded under partial failure.
+- *Sender-side state.* Per-promise next-seq counter. Discardable
+  with the promise via existing GC mechanisms.
+- *Stable promise identity.* The seq is per-promise, so the promise
+  needs an identity that survives forwarding and shortening. OCapN
+  already has this via `desc:promise` (3PH-aware promise reference);
+  shortening preserves the logical promise identity even as the
+  wire-level descriptor changes.
+- *Failure mode for missing seq.* If seq=N is lost (e.g., session
+  abort during forwarding), seq=N+1, N+2, … buffer indefinitely at
+  the receiver. Need a timeout / break-on-gap mechanism. Standard
+  fix: break the promise after a configurable gap-size or
+  gap-duration.
+- *Multi-sender semantics.* Per-(sender, promise) FIFO does not
+  order messages from different senders relative to each other.
+  This matches the usual ocap "messages from independent sources
+  may interleave arbitrarily" expectation.
+- *Backwards compatibility.* Adding a positional field changes the
+  wire shape. Either bump the captp version or treat seq as
+  optional / sentinel.
+- *Promise resolution preserves seq tracking.* When a promise
+  resolves to another promise, the receiver's seq state for the
+  outer promise transfers to the inner. Implementation detail but
+  worth pinning down.
+
+**Comparison of overhead with flush, by scenario.**
+
+| Scenario | `op:flush` | Per-promise seq |
+|---|---|---|
+| 3-vat shortening, no pending sends | 2 msgs, +1 RTT | 0 (no event at all) |
+| 3-vat shortening, K pending sends | 2 msgs, +1 RTT, lose pipelining | K varints; pipelining preserved |
+| 4-vat chain shortening | 10 msgs, 4 RTTs | per-message seq tags only |
+| N-vat chain | O(5N) msgs, O(2N) RTTs | per-message seq tags only |
+| Many promises shortening at once | 2K flush messages | per-message seq tags only |
+| Idle Alice (no sends) | 2 msgs of pure overhead | 0 |
+
+The crossover is unfavorable to flush in every multi-hop scenario
+and in the common case of idle promises. The per-message overhead is
+small enough that, in absolute terms, seq is likely cheaper across
+realistic workloads.
+
+**Comparison to Cap'n Proto.**
+
+Cap'n Proto's embargo provides E-order (per-reference FIFO) via
+sender-receiver coordination on each Resolve. Per-promise seq
+provides per-(sender, target-promise) FIFO via per-message metadata.
+The two cover overlapping but not identical territory. Per-promise
+seq does not prevent the Tribble 4-way race for non-shortening
+scenarios; it just makes shortening cheap. Cap'n Proto's
+"forward-strictly-to-R" rule is independently necessary for chain
+correctness if shortening is permitted.
+
+**Failure-mode handling.**
+
+Recommended approach for missing-seq under partial failure: when the
+receiver has buffered seq > N for some configurable gap window
+(e.g., 30 seconds or 1000 unfilled gaps), break the promise with a
+"shortening gap" reason. The sender can detect this via existing
+promise-broken propagation and re-establish.
+
+**Key insight.**
+
+The flush design treats shortening as a *protocol event* that
+requires synchronization. Per-promise seq treats shortening as an
+*invisible optimization* that the destination's invocation logic
+handles transparently. This relocates the complexity from the
+control plane to the data plane, where it can be amortized over
+many messages instead of paid at every shortening.
+
+**Status.** Speculative; not yet drafted as spec text. Worth
+prototyping alongside the flush PR for empirical comparison.
+
+### 10.3 Hybrid: per-pipe FIFO + `delivered-after` (lowest-overhead pragmatic option)
+
+If §10.2 is the most coherent option and §5.5 (flush) is the
+maximalist row-3 option, the *minimalist* option is to leave the
+protocol contract at row 2 (per-session FIFO) and rely on
+`delivered-after` (§10.1) for any stricter ordering the application
+needs.
+
+**Stance.** Embrace the disagreement. The protocol's contract is
+what it is — per-CapTP-session FIFO. Promise shortening may
+reorder. Document this explicitly in the spec. Provide
+`delivered-after` for application code that needs more.
+
+**When this is the right choice.**
+
+- If most applications don't need cross-message ordering on a
+  single promise (common in RPC-style code where each call is
+  independent).
+- If the implementation cost of either flush or seq is unacceptable
+  in the near term.
+- If the spec-process consensus is closer to Ridley's reading than
+  erights' reading and we don't want to relitigate that disagreement
+  to ship a v1.
+
+**Pros.**
+
+- Lowest protocol complexity. No new ops beyond `delivered-after`.
+- Implementations stay simple; existing implementations (Goblins,
+  Endo, etc.) need only add the optional `delivered-after` field.
+- Application code that doesn't pipeline doesn't pay any cost.
+- Future work can layer flush or seq on top without breaking
+  compatibility.
+
+**Cons.**
+
+- Application authors must remember to use `delivered-after`. Misses
+  are silent (out-of-order invocation).
+- erights' "programming with 'almost always FIFO' is too hard"
+  critique applies: the absence of strong default ordering is a
+  footgun.
+- The availability property erights motivates the issue with is not
+  actually delivered by the protocol — it's only delivered for
+  applications that correctly use `delivered-after`. Library code
+  is uncertain.
+
+### 10.4 Recommendation
+
+If we want the strongest coherent guarantee with no per-event
+overhead: **§10.2 per-promise seq**. This is the cleanest answer to
+the design question and eliminates most of §7.3's open issues.
+
+If we want the lowest-overhead pragmatic answer that ships
+something today: **§10.3 hybrid with `delivered-after`**. Avoid
+strengthening the protocol contract; let applications opt in.
+
+The flush approach (§5.5) sits between these two and pays both
+costs: protocol-level complexity *and* per-event overhead. Its only
+real advantage is that it's the most concrete proposal currently on
+the table — but if we're willing to prototype, seq is a better
+target.
+
