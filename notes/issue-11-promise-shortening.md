@@ -1035,7 +1035,163 @@ reorder. Document this explicitly in the spec. Provide
   applications that correctly use `delivered-after`. Library code
   is uncertain.
 
-### 10.4 Recommendation
+### 10.4 Punt-back forwarding (kumavis exploration)
+
+**Idea.** Rather than have Bob *forward* pipelined messages on a
+shortened promise, Bob *bounces them back* to the original caller
+("punts"), and the caller invokes them on her own directly to the
+destination.
+
+**Mechanism.** Adapted to the canonical 3-vat scenario:
+
+1. Bob's `p2` resolves to Carol. Bob switches to "punt mode" for
+   `p1`.
+2. Bob sends Alice a notification: `p1` is now resolved to Carol's
+   object N at vat Carol. (Includes whatever 3PH information Alice
+   needs to establish A↔C if not already established.)
+3. Any pipelined `op:deliver` / `op:deliver-only` for `p1` that
+   arrives at Bob *after* Bob entered punt mode is bounced back to
+   Alice as an `op:deliver-only` carrying the original message
+   payload (or a recoverable identifier for it).
+4. Alice receives the resolution, opens A↔C if needed, and queues
+   future application sends locally pending the receipt of all
+   bounces.
+5. Alice receives bounces in original send order (B↔A FIFO of
+   bounces is consistent with Bob's receive order, which is A↔B
+   FIFO of original sends — so order is preserved).
+6. Alice resends each bounced message to Carol over A↔C, then
+   releases queued application sends to Carol in their original
+   order.
+
+**Does it solve intended ordering?**
+
+By itself, **no**. Without sender-side serialization at Alice, this
+breaks ordering as easily as no-flush:
+
+- Alice sends `z()` to Bob at t=0.
+- Bob's resolution notice arrives at Alice at t=1.
+- Alice immediately sends `w()` directly to Carol at t=2.
+- Bob bounces `z()` back to Alice at t=3.
+- Alice resends `z()` to Carol at t=4.
+- At Carol: `w()` arrives before `z()`. **Wrong order.**
+
+To preserve order, Alice must *not* send any application messages
+direct-to-Carol until all in-flight bounces have arrived. This
+requires Alice to track an in-flight count per shortened promise
+(or a "last bounce" sentinel from Bob), and to buffer application
+sends until the count reaches zero.
+
+So the precise answer is: **punt + sender-side serialization**
+preserves per-(Alice, p1) FIFO at Carol. **Punt alone does not.**
+
+That sender-side serialization is a flush by another name. It uses
+no new wire op, but the same logical work is done — Alice quiesces
+sends until she's certain the old path has drained. The "drain"
+signal is "all bounces have arrived" instead of "flush-done has
+arrived."
+
+**Costs.**
+
+| | `op:flush` | Punt |
+|---|---|---|
+| Per-shortening overhead, no pending sends | 2 msgs, +1 RTT | 1 msg (resolution only) |
+| Per-shortening overhead, K pending sends | 2 msgs, +1 RTT, K forwards (B→C) | 1 msg + 2K bounce-and-resend (B→A→C) |
+| Pipelined message cost | A→B→C (2 hops) | A→B→A→C (3 hops) |
+| New op required | Yes (`op:flush`) | No (resolution and bounces are existing op shapes) |
+| Sender-side state | Just `p'` | Per-promise in-flight count + local buffer |
+| Pipelining preserved during shortening | No | No (Alice still buffers) |
+
+For **K=0** pipelined messages, punt saves 1 message vs flush. For
+**K≥2**, punt is more expensive on the wire (each pipelined
+message traverses an extra hop). The crossover is at K=1, where
+both cost roughly the same.
+
+**Where punt's framing helps anyway.**
+
+A few non-overhead arguments are worth noting:
+
+- *No new opcode.* The protocol surface is unchanged; "bounce" can
+  be expressed as a normal `op:deliver-only` whose args carry the
+  original message. Easier to evolve.
+- *Bob's role simplifies.* Bob is just a forwarder that may stop
+  forwarding. There is no swap of export-table entries, no
+  resolver-replacement, no flush-done callback. Just "I'm not
+  going to do this; here, take it back."
+- *Failure-mode alignment.* If Bob is going offline or running
+  low on resources, "bounce and let Alice handle" is a graceful
+  degradation. Flush requires Bob to be alive enough to complete
+  a synchronization. Punt-as-failure-handling lets Bob bow out
+  cleanly.
+- *Per-(Alice, p1) ordering at Carol.* Bounces arrive at Alice in
+  send order (FIFO of A↔B then B↔A); Alice resends to Carol in
+  receive order (FIFO of A↔C). End-to-end FIFO from Alice to
+  Carol is preserved *if* Alice serializes around the bounce
+  window.
+
+**Where punt is decisively worse.**
+
+- *Doubles the wire cost of pipelined messages.* Each goes A→B
+  (original) and B→A (bounce) before reaching Carol. For
+  high-pipelining workloads, that's significant.
+- *Sender-side complexity.* The discipline Alice must maintain to
+  preserve ordering is real and silent — get it wrong and ordering
+  breaks invisibly.
+- *Answer-pos remapping.* A pipelined `op:deliver` had `answer-pos`
+  in Bob's session; the resend uses Carol's session. Alice's
+  runtime must rewrite the answer position. This is the same
+  hazard as flush's swap, just relocated.
+- *"Last bounce" detection.* Alice needs a definitive signal that
+  all bounces have arrived. Either a count (Bob signals "I am
+  bouncing N messages") or a sentinel from Bob (a final
+  "no-more-bounces" message). Both are coordination Bob must
+  maintain.
+
+**Composes with per-promise seq (§10.2) — and that's interesting.**
+
+If pipelined messages carry per-promise seq numbers (§10.2), punt
+becomes much simpler:
+
+- Bob bounces with seq attached.
+- Carol reorders by seq regardless of arrival path.
+- Alice does *not* need to serialize — she can send direct
+  immediately upon receiving the resolution. New direct sends
+  carry higher seq numbers; bounced sends carry lower seq numbers
+  and will be reordered ahead of the new sends at Carol.
+
+Under §10.2, punt becomes a clean way to drop forwarding state at
+Bob without giving up ordering. Cost is still A→B→A→C for in-flight
+messages, but ordering is intrinsic.
+
+**When punt might be the right call.**
+
+- *As a graceful-degradation path*, not a primary mechanism. Bob
+  can punt when he wants to bow out (e.g., shutting down). Normal
+  operation uses flush or seq.
+- *In low-pipelining workloads* where K is usually 0 or 1.
+  Application code that just resolves and reads (no further
+  pipelining) wouldn't notice the bounce overhead because there's
+  nothing to bounce.
+- *Combined with §10.2 per-promise seq*, where the ordering
+  property is intrinsic and punt is just a routing simplification.
+
+**Holes.**
+
+- *Multi-sender pipelining.* If Alice and Dave both pipeline on
+  `p1` (via 3PH), Bob has to bounce to whichever vat sent the
+  message. Multi-sender works but state grows.
+- *Bouncing pipelined-on-bounce messages.* If Alice's bounce-resend
+  to Carol itself races a Carol-side resolution (Carol shortens
+  `p3` to Derek), the same bounce could happen again. Recursive
+  bouncing, in principle bounded by chain length.
+- *Failure during bounce.* If Bob crashes mid-bounce, in-flight
+  messages on B→A are lost. Alice's count never converges. Need
+  a timeout or break-on-abort.
+- *Memory pressure on Bob.* If Bob is in punt mode and Alice is
+  still sending pipelined messages, Bob has to hold them long
+  enough to bounce them. No different from forwarding in steady
+  state but worth pinning down.
+
+### 10.5 Recommendation
 
 If we want the strongest coherent guarantee with no per-event
 overhead: **§10.2 per-promise seq**. This is the cleanest answer to
@@ -1050,4 +1206,13 @@ costs: protocol-level complexity *and* per-event overhead. Its only
 real advantage is that it's the most concrete proposal currently on
 the table — but if we're willing to prototype, seq is a better
 target.
+
+**On punt-back forwarding (§10.4).** The interesting finding from
+the punt exploration is *negative*: punt by itself does not solve
+ordering. Without sender-side serialization, the bounce-and-resend
+pattern reorders just as easily as no-flush. Punt + sender-side
+serialization re-derives flush in different mechanics. Punt + §10.2
+seq is interesting as a graceful-degradation primitive (Bob can
+unilaterally bow out of forwarding without breaking ordering), but
+punt is not a viable primary ordering mechanism on its own.
 

@@ -163,52 +163,60 @@ Mechanisms:
 
 ## 3. The Lost Resolution Bug
 
-### 3.1 What it is
+### 3.1 Caveat on definition
 
-A three-party race in CapTP-of-E in which the resolution binding for a
-promise can be discarded by an intermediary before all messages addressed to
-that promise have been forwarded — silently dropping those messages and
-breaking E-order.
+The phrase "Lost Resolution Bug" appears in Mark Miller's posts on the
+Spritely "Conundrum: Message Ordering" thread and in Agoric's
+`agoric-sdk#40`, but I was not able to retrieve a precise definition
+from either source (the Spritely forum returned 403; warner in the
+Agoric issue says "I won't be able to capture the full idea here").
+Per dtribble in [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11),
+the same family of issues is also called "**Tribble's 4-way race**"
+and "the **Midori four vat promise shortening case**" — dtribble
+explicitly confirms they are the same thing.
 
-### 3.2 What gets "lost"
+The most defensible reading is therefore: **the Lost Resolution Bug is
+markm's name for the same multi-party promise-shortening ordering
+race that Cap'n Proto's `rpc.capnp` calls the Tribble 4-way race.**
+"Lost resolution" likely refers to the ordering of resolutions being
+broken, not to a binding being discarded.
 
-The promise's *resolution record* — the wire-level mapping `promise → target`.
-The order being broken is the symptom; the missing binding is the cause.
+### 3.2 The scenario (per dtribble in ocapn/ocapn#11)
 
-### 3.3 The scenario
+Four parties: A, B, C, D. A pipelines through Bob, who pipelines
+through Carol, who pipelines through Derek. Each link can shorten
+when the next-link's promise resolves. dtribble's writeup:
 
-1. Vat A holds a remote promise P, hosted by Vat B, that will eventually
-   resolve to Carol in Vat C.
-2. A pipelines messages to P. They flow A → B; B will forward once it knows
-   the resolution.
-3. B resolves P to Carol; sends `Resolve(P → C)` back to A. To honor the
-   "resolve and clean up" optimization, B is allowed to dismantle its
-   forwarder for P — A is supposed to talk to C directly from now on.
-4. Meanwhile A may have already (a) GC-acked P, or (b) sent further messages
-   to P that are crossing the `Resolve` in flight.
-5. Late messages arrive at B addressed to P, but B no longer holds the
-   binding. The resolution record is gone. Messages can't be forwarded;
-   they're dropped. (Symmetrically: a `Resolve` may arrive for a promise A
-   has already discarded.)
+> "B forwards X to Y, resulting in the handoff. C forwards Y to Z,
+> resulting in the handoff. […] Those two shortenings overlap, and
+> messages could be sent on any of the X,Y,Z,R between any
+> shortenings where the shortenings happen in almost any order, so
+> those messages arrive at R in a broad range of orders."
 
-### 3.4 Why this breaks E-order
+The 4-vat case is irreducible — the 3-vat case doesn't have crossing
+shortenings — and dtribble's view is that any implementation should
+generalize the 4-vat solution rather than worry about 5, 6, etc.
 
-Some pipelined calls reached B before B forgot and were forwarded. Some
-arrived after and were dropped. New calls along the now-direct A→C path were
-delivered. The kept messages aren't FIFO with respect to the dropped ones.
+### 3.3 How the descendants address it
 
-### 3.5 How the descendants address it
+- **Cap'n Proto:** "Forward strictly to R" rule + Embargo / Disembargo.
+  Once P resolves to a remote R, P is forwarded only to R, never
+  re-shortened to R's own resolution. This freezes the chain and
+  sidesteps the race entirely. Receiver-side embargo serializes
+  the path switchover.
+- **Ridley's `op:flush` proposal (current):** Allows transitive
+  shortening; each link of a long resolution chain can shorten with
+  its own flush. The cost is per-link round trips; the win is the
+  availability property erights motivates the issue with — once
+  shortened, intermediate vats can leave the network.
+- **Mark Miller's later view (per Spritely thread):** Drop end-to-end
+  E-order entirely; use point-to-point FIFO. Per-(connection)
+  ordering only; shortening admits reordering.
 
-- **Cap'n Proto:** B is *not* allowed to dismantle the forwarder; messages to
-  P forward strictly to R forever. Receiver-side embargo serializes the
-  switchover.
-- **Miller's later view:** abandon end-to-end E-order; use Waterken-style
-  point-to-point FIFO. Per-connection ordering is robust without the embargo
-  machinery.
-
-Sources for this section: [agoric-sdk#40](https://github.com/Agoric/agoric-sdk/issues/40)
-(warner attributes the discussion to "@erights, @dtribble, @Chris-Hibbert and
-I"); [PlaygroundVat limitations.md](https://github.com/agoric-labs/PlaygroundVat/blob/master/docs/limitations.md);
+Sources for this section: [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11)
+(specifically [dtribble's 4-vat scenario](https://github.com/ocapn/ocapn/issues/11#issuecomment-1492469923));
+[agoric-sdk#40](https://github.com/Agoric/agoric-sdk/issues/40);
+[PlaygroundVat limitations.md](https://github.com/agoric-labs/PlaygroundVat/blob/master/docs/limitations.md);
 [Spritely Conundrum: Message Ordering #9 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/9).
 
 ---
