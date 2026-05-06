@@ -11,6 +11,7 @@ Offline / reproducible copies of sources cited in `notes/message-ordering.md` an
 | `google-groups-cap-talk-xWv2-J62g-I.html.gz` | [cap-talk: “Goblin semantics…”](https://groups.google.com/g/cap-talk/c/xWv2-J62g-I) (SPA snapshot; use `gzip -dk` to expand) |
 | `google-groups-cap-talk-R5kc06XGqWs-WDraOqkQAgAJ.html.gz` | [cap-talk thread excerpt linked from markm #9](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ) |
 | `capnproto-rpc.capnp` | [capnproto/capnproto `master` — `c++/src/capnp/rpc.capnp`](https://github.com/capnproto/capnproto/blob/master/c++/src/capnp/rpc.capnp) |
+| `markm-thesis/` | Mark S. Miller, *Robust Composition* (Johns Hopkins PhD thesis, 2006) — **Markdown by chapter**; see `markm-thesis/README.md` and `markm-thesis/extract.py` to rebuild from a local PDF |
 | `ocapn-ocapn-issue-236.json` | [ocapn/ocapn#236](https://github.com/ocapn/ocapn/issues/236) |
 | `ocapn-ocapn-issue-265.json` | [ocapn/ocapn#265](https://github.com/ocapn/ocapn/issues/265) |
 | `ocapn-ocapn-issue-15.json` | [ocapn/ocapn#15](https://github.com/ocapn/ocapn/issues/15) |
