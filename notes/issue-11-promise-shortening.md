@@ -141,6 +141,34 @@ shortening. That is strictly stronger than per-session FIFO and strictly
 weaker than full E-order (which would also require WormholeOp for
 cross-reference ordering on three-party handoffs).
 
+### 3.4 Waterken comparison
+
+Waterken (Tyler Close) is a useful reference point because erights, on the
+Spritely thread, said he had retreated from E-order toward "Tyler's
+Waterken point-to-point FIFO" — and yet here in #11 he's pushing for
+something stronger than what Waterken actually delivers. The four rows
+make the disagreement legible:
+
+| Reading | Guarantee | Requires | Cost |
+|---|---|---|---|
+| Waterken (Tyler Close) | Per-HTTP-pipe FIFO between two peers | FIFO+reliable HTTP. **No protocol-level promise shortening** — introductions are URL-sharing, response promises resolve along the same pipe. | Cheap. No availability win from shortening. |
+| Ridley's reading of OCapN | Per-CapTP-session FIFO | Same as Waterken in practice | Cheap. Admits that shortening reorders. |
+| erights' reading of OCapN (#11) | Vat-to-object FIFO end-to-end across shortening | Flush/embargo around each shortening event | Moderate. Needs `op:flush` or equivalent. |
+| Full E-order | Per-reference FIFO including across handoffs | WormholeOp + embargo + forward-strictly-to-R | Heaviest. |
+
+Waterken can be row 1 cheaply because it sidesteps the shortening
+optimization entirely: there is always one direct path between two peers,
+so there's no race between an old and a new path. OCapN, by treating
+shortening as a protocol-level feature, takes on the FIFO obligation that
+Waterken can sidestep.
+
+erights' position in this issue is row 3: Waterken-strength FIFO **plus**
+shortening for the availability win, *without* the WormholeOp tax of full
+E-order. Quoting his explicit framing: "vat-to-object fifo with promise
+shortening, with or without the improved pipelining, has no need
+whatsoever for WormholeOp." Row 3 is the sweet spot if it can be
+implemented; Ridley's `op:flush` proposal is an attempt at exactly that.
+
 ## 4. How E solved it (for context)
 
 erights walked through the historical E solution. Sketch:
@@ -341,6 +369,111 @@ spec-friendly form, `P₁…Pₙ` for peers and `Oₚ,ₘ` for object m on peer 
 - [erights.org: __order Miranda method](http://www.erights.org/javadoc/org/erights/e/elib/prim/MirandaMethods.html)
 - Local: `notes/message-ordering.md` for surrounding terminology.
 
-## 8. Open space (for our brainstorming)
+## 8. Brainstorming alternatives
 
-*To be filled in as we discuss alternatives.*
+### 8.1 `delivered-after` — opt-in invocation barriers (kumavis)
+
+**Idea.** Add an optional `delivered-after` parameter to `op:deliver`
+(and `op:deliver-only`) carrying a list of promise references — possibly
+including handoff descriptors — that must resolve before the message is
+*invoked*. The list does not affect *delivery*: messages still flow over
+the wire under per-session FIFO, and subsequent messages on the same
+connection are not blocked by an earlier message's `delivered-after`
+list. Only the local invocation of *this* message waits.
+
+```
+<op:deliver to-desc           ; desc:export
+            args              ; sequence
+            answer-pos        ; positive integer | false
+            resolve-me-desc   ; desc:import-object | desc:sig-envelope
+            delivered-after>  ; sequence of promise refs (optional)
+```
+
+**Stance on the disagreement.** This proposal sits at row 2 of the table
+in §3.4 (per-session FIFO is the protocol's contract) and gives the user
+a way to reach into row 3 selectively. Library code or hot paths that
+don't care about cross-reference ordering pay nothing; code that needs
+end-to-end ordering states that requirement explicitly per-message.
+
+**How it relates to flush.** Flush is a *runtime-imposed* barrier
+inserted by the kernel at every shortening event to preserve a global
+FIFO contract; `delivered-after` is a *user-imposed* barrier inserted by
+application code to assert specific causal dependencies. They are not
+mutually exclusive — one could imagine flush as a built-in special case
+of `delivered-after` whose dependency list is generated automatically.
+
+**Pros.**
+
+- Pay-for-what-you-use. Baseline protocol stays cheap.
+- Composable: users can express arbitrary causal dependencies, not only
+  "after the previous message on the same promise." Useful for batch
+  joins, cross-receiver dependencies, and effects beyond shortening.
+- Implementable without any new protocol machinery beyond the parameter:
+  the receiver already has all promise machinery needed to wait on
+  resolution.
+- Surfaces ordering decisions in the wire format — easier to debug and
+  reason about than implicit kernel embargoes.
+
+**Cons / open questions.**
+
+- *Discoverability.* erights' core complaint about weak FIFO ("too hard
+  to tell that you did not code correctly") still applies: library
+  authors must remember to use it. Row-2 baseline + opt-in row-3 is
+  semantically opt-in, and opt-in safety properties tend to be missed.
+- *Pre-arrival problem in the shortening case.* For the canonical
+  shortening race, Alice would want to send `w()` with
+  `delivered-after = [pZ]` where pZ is the answer position of `z()`.
+  But if `w()` arrives at Carol *before* `z()` does (the very race
+  we're trying to fix), Carol has no record of pZ yet. The receiver
+  needs a way to recognize a not-yet-seen promise reference and create
+  a placeholder for it. Solvable — pZ has a globally-disambiguatable
+  identity via the resolver descriptor — but it's extra machinery on
+  the receiver.
+- *Failure semantics.* If a promise in `delivered-after` breaks rather
+  than fulfilling, what happens to the waiting message? Most likely
+  the message should reject with the breakage reason, but we have to
+  pick. Also: what if `delivered-after` lists multiple promises and
+  some fulfill while others break?
+- *Forwarding semantics.* If a `delivered-after` promise itself
+  forwards/shortens, does the wait correctly track all the way to
+  settlement? In principle yes — that's how promises behave — but
+  this means the receiver may end up waiting on a chain that traverses
+  yet more vats, which has its own latency and failure-mode story.
+- *Interaction with `op:listen`.* If `delivered-after` is implemented
+  as "wait until `op:listen` reports resolution," the receiver may
+  need to issue listens it wouldn't otherwise. Cost: an extra round
+  trip per dependency in the worst case.
+- *Can the user always express what they need?* If z is `op:deliver`,
+  Alice has a promise (the answer position) to use. If z is
+  `op:deliver-only`, Alice has no promise to wait on — she'd have to
+  promote it to `op:deliver` just to get a handle. Possible
+  alternative: synthesize a "completion" promise for `op:deliver-only`
+  too, used only for ordering.
+
+**Comparison to existing primitives.**
+
+- Roughly equivalent to `Promise.all([...]).then(_ => method())` reified
+  in the protocol so the wait happens at the receiver, not the sender.
+  Saves a round trip relative to user-space `.then()`-chaining.
+- Resembles capnp's "join" / dependency expressions and happens-before
+  metadata in causal-broadcast systems, but per-message rather than
+  per-stream.
+- Conceptually adjacent to E's `whenMoreSettled`, but exposed to user
+  code rather than meta to the protocol.
+
+**Open follow-ups to discuss.**
+
+- Should `delivered-after` block delivery to the receiver, or only
+  invocation at the receiver? (User's framing: only invocation. Worth
+  confirming the receiver-buffer semantics.)
+- Could a "default" mode auto-include the previous send's promise on
+  the same target, giving free vat-to-object FIFO without flush? (This
+  basically reinvents per-target sequencing inside the deliverAfter
+  primitive.)
+- Should `delivered-after` accept handoff descriptors as well as direct
+  imports — i.e., "wait until this 3PH completes"? The user explicitly
+  mentions handoffs.
+- What's the receiver-side state cost? If many deferred messages
+  accumulate, this is unbounded queue growth. Need a flow-control or
+  back-pressure story, especially under partial failure.
+
