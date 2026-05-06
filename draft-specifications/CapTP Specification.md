@@ -689,6 +689,119 @@ resolver when a resolution is available to the `listen-desc` object. If a
 resolution is already available, the resolver provided in `listen-desc` MUST be
 fulfilled or broken.
 
+## [`op:flush`](#op-flush)
+
+This operation is used during *promise shortening*: the optimization
+where a promise that was originally hosted at one vat is re-routed to
+its eventual settlement vat so that messages no longer need to traverse
+the original host. `op:flush` is the synchronization step that prevents
+pipelined messages on the old path from being overtaken by messages on
+the new path during the switchover.
+
+```text
+<op:flush target-resolver        ; desc:export
+          flush-done-resolver>   ; desc:import-object
+```
+
+### Background
+
+A promise `p` exported from Alice to Bob via the `resolve-me-desc` of
+an [`op:deliver`](#op-deliver) is held at Bob's side as an
+import-handle and at Alice's side as a resolver `r` in Alice's export
+table. While `p` is unresolved, Alice may pipeline messages on it;
+those messages travel from Alice to Bob under per-connection FIFO and
+are forwarded by Bob to whatever object will eventually settle the
+promise.
+
+When Bob is ready to resolve `p` to an object hosted on a third vat
+(call it Carol), Bob would like Alice to thereafter send messages
+directly to Carol. The naive switchover allows messages on the new
+direct path Alice→Carol to overtake messages still in flight on the
+old path Alice→Bob→Carol. `op:flush` is the synchronization step that
+prevents this.
+
+### Sending
+
+Bob sends `op:flush` to Alice **before** initiating the [Third Party
+Handoff](#third-party-handoffs) that establishes the direct
+Alice↔Carol path.
+
+#### `target-resolver`
+
+A [`desc:export`](#desc-export) indicating the resolver in the
+receiver's (Alice's) export table that corresponds to the promise
+being shortened. This MUST be the same resolver the receiver
+originally exported to the sender (e.g. via the `resolve-me-desc` of
+an earlier [`op:deliver`](#op-deliver) that produced the promise).
+
+#### `flush-done-resolver`
+
+A [`desc:import-object`](#desc-import-object) referring to a
+sender-side object. The receiver will invoke it when its side of the
+flush has completed. The receiver invokes it using the standard
+CapTP mechanism (typically [`op:deliver-only`](#op-deliver-only)).
+The arguments of the invocation are unconstrained by this
+specification; the act of delivery is what conveys completion.
+
+### Receiving
+
+Upon receiving `op:flush`, the receiver MUST perform the following
+steps in order:
+
+1.  Locate the resolver `r` indicated by `target-resolver` in its
+    export table. If the position is not in use, the receiver MUST
+    break `flush-done-resolver` with an appropriate error and take
+    no further action for this flush.
+
+2.  Create a new local promise/resolver pair, called `p'` and `r'`.
+
+3.  Fulfill the original resolver `r` with `p'`. From the moment of
+    this fulfillment, any further messages local application code
+    attempts to send on the original promise MUST be forwarded into
+    `p'`, where they accumulate locally because `p'` is unresolved.
+
+4.  Replace the export-table entry at the position previously held
+    by `r` with `r'`. The sender's existing import-handle for that
+    position now refers to `r'` rather than `r`, and the sender will
+    use this new resolver to deliver the eventual resolution.
+
+5.  Invoke `flush-done-resolver` by sending it a single
+    [`op:deliver-only`](#op-deliver-only).
+
+By per-connection FIFO, any pipelined messages the receiver had
+previously sent on the connection before step 5 MUST be delivered to
+the sender before the flush-done notification. This is the guarantee
+the sender of `op:flush` relies on: when the sender observes the
+flush-done notification, no further pipelined messages on the
+original promise can still be in flight from the receiver.
+
+### Use in promise shortening
+
+After the sender of `op:flush` (Bob) has received the flush-done
+notification, Bob initiates a normal [Third Party
+Handoff](#third-party-handoffs) to route Alice directly to the third
+vat that hosts the resolution. The 3PH uses the new resolver `r'` —
+which now occupies the original export-table position — as the
+receiver's resolver. When the handoff completes, `r'` is fulfilled
+with the gift; this resolves `p'`, and therefore (through the
+fulfillment in step 3 above) the original promise from the
+application's perspective. Messages buffered in `p'` then flow over
+the new direct connection.
+
+Per-connection FIFO of the Bob↔Carol session ensures that messages
+Bob had been forwarding on Alice's behalf reach Carol before the
+deposit-gift does. Per-connection FIFO of Alice↔Carol ensures that
+messages Alice releases from `p'` reach Carol after the
+deposit-gift. The combination preserves FIFO ordering between
+Alice's sending vat and the receiving object across the path
+change.
+
+When more than three vats are involved — i.e., the resolution chain
+itself includes further unsettled remote promises — each shortening
+step that re-routes a promise across a vat boundary MUST be
+preceded by its own `op:flush`. The sequence of flushes propagates
+the synchronization through the chain.
+
 ## [`op:gc-export`](#op-gc-export)
 
 When a reference is given out over CapTP, the reference must be kept
