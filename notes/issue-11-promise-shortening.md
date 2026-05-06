@@ -35,6 +35,20 @@ contention in this issue is *which* points: (a) the two peers of a single
 CapTP session, or (b) the sending vat and the receiving object end-to-end,
 even when the path goes through a third party.
 
+**End-to-end reference FIFO.** Messages sent on the *same logical
+reference* (from the application's perspective) are delivered in send
+order at the destination, even when the wire-level reference identity
+changes during promise shortening. This is the actual goal `op:flush`
+(and its alternatives) are trying to deliver — not the more general
+"vat-to-object FIFO."
+
+**Causal order.** The general distributed-systems property: if message m₁
+causally precedes m₂ (e.g., the sender of m₂ had observed m₁'s effects
+before sending m₂), then m₂ is delivered after m₁. Stronger than per-pipe
+FIFO; weaker than total order. End-to-end reference FIFO is one specific
+slice of causal order — the slice along a single logical reference from
+a single sender.
+
 **Settled / resolved / forwarded.** Modern promise terminology used by
 erights:
 - *Settled* = fulfilled or broken (terminal).
@@ -93,9 +107,15 @@ vatA: Alice                  vatB: Bob                  vatC: Clair → Charlie
 ```
 
 If `w()` along the short path A→C arrives before `z()` finishes its longer
-journey A→B→C, Charlie sees `w()` then `z()` — out of order. This violates
-end-to-end FIFO between Alice and Charlie even though every individual
-two-peer connection is FIFO.
+journey A→B→C, Charlie sees `w()` then `z()` — out of order. Note what
+breaks: the application sent both `z()` and `w()` on `p1`, the same
+*logical* promise. But under shortening, those two sends use *different
+wire references*: `z()` was sent via Alice's import for Bob (call it
+`ref_B`), and `w()` was sent via Alice's import for Carol (`ref_C`).
+Per-connection FIFO between Alice and any one peer does not relate
+messages sent on different references. So even though every individual
+two-peer connection is FIFO, the application-visible reference FIFO is
+broken at exactly the moment Alice's send-target-reference changes.
 
 ### 3.2 The 4-vat generalization (Tribble / Midori)
 
@@ -136,12 +156,67 @@ This is the pivotal exchange, and it's worth quoting:
 
 So the OCapN spec's current netlayer-level "messages received in the order
 sent" may understate what users (and erights) expect. The strong reading
-demanded here is **vat-to-object FIFO**, end-to-end, surviving promise
-shortening. That is strictly stronger than per-session FIFO and strictly
-weaker than full E-order (which would also require WormholeOp for
-cross-reference ordering on three-party handoffs).
+demanded here is **end-to-end reference FIFO**: messages sent on the same
+logical promise are delivered in send order even when shortening changes
+the wire-level reference Alice uses to send them. (erights phrases this as
+"sending object and receiving object," which amounts to the same property
+in this design — the "reference" the application holds is what binds Alice
+and Charlie together across path changes.) This is strictly stronger than
+per-session FIFO and strictly weaker than full E-order (which would also
+require WormholeOp for cross-reference ordering on three-party handoffs).
 
-### 3.4 Waterken comparison
+### 3.4 What flush is actually solving: end-to-end reference FIFO as a slice of causal order
+
+Promise shortening changes which wire reference Alice uses to send.
+Per-connection FIFO holds on each individual reference; it does not
+hold across a switch from one reference to another. The application
+sees one promise; the protocol sees two references. Flush bridges
+the gap.
+
+This is a special case of *causal order*. Causal order in
+distributed systems says: if m₁ causally precedes m₂ (m₂ was sent
+after m₁'s effects were observable to the sender), m₂ is delivered
+after m₁. Three increasingly weak slices of causal order are at
+play here:
+
+| Slice | Definition | Status in OCapN |
+|---|---|---|
+| Causal order (general) | Across all senders, references, and forwarding paths, m₁ → m₂ implies m₂ delivered after m₁ | Not attempted; would require happens-before tracking (vector clocks etc.) |
+| End-to-end reference FIFO | One sender, one logical reference: messages sent in order on the same promise are delivered in order, even across shortening | What `op:flush`, per-promise seq, and erights' position are all targeting |
+| Per-connection FIFO | One sender, one wire reference, one connection: messages on a single CapTP session arrive in send order | What netlayers already provide; what Ridley's reading takes the spec to mean today |
+
+End-to-end reference FIFO is the specific slice of causal order
+that this issue is about. It's the property an application
+programmer naturally expects when they hold a promise and call
+`p.foo()` then `p.bar()`. Anything stronger (cross-reference
+causality, multi-vat happens-before) is out of scope; OCapN
+explicitly does not promise it. Anything weaker (per-session FIFO
+only) breaks programmer expectations precisely at shortening
+events.
+
+What flush is *not* doing:
+
+- Not enforcing ordering between messages on different references
+  (those are independent).
+- Not enforcing ordering between messages from different senders
+  (those interleave arbitrarily, as is normal in ocap systems).
+- Not enforcing ordering of effects across vats (Bob processing
+  one of Alice's messages before Carol processes a related one is
+  a separate, application-level concern).
+
+What flush *is* doing:
+
+- Bridging the wire-level reference change during shortening so
+  that the application's view — "two sends on the same promise" —
+  remains FIFO at the destination.
+
+Calling this guarantee "end-to-end reference FIFO" rather than
+"vat-to-object FIFO" is more precise. Two independent references
+held by Alice that both happen to point at Charlie are not made
+FIFO by flush; they were never related in the application's
+intent.
+
+### 3.5 Waterken comparison
 
 Waterken (Tyler Close) is a useful reference point because erights, on the
 Spritely thread, said he had retreated from E-order toward "Tyler's
@@ -153,7 +228,7 @@ make the disagreement legible:
 |---|---|---|---|
 | Waterken (Tyler Close) | Per-HTTP-pipe FIFO between two peers | FIFO+reliable HTTP. **No protocol-level promise shortening** — introductions are URL-sharing, response promises resolve along the same pipe. | Cheap. No availability win from shortening. |
 | Ridley's reading of OCapN | Per-CapTP-session FIFO | Same as Waterken in practice | Cheap. Admits that shortening reorders. |
-| erights' reading of OCapN (#11) | Vat-to-object FIFO end-to-end across shortening | Flush/embargo around each shortening event | Moderate. Needs `op:flush` or equivalent. |
+| erights' reading of OCapN (#11) | End-to-end reference FIFO across shortening | Flush/embargo around each shortening event | Moderate. Needs `op:flush` or equivalent. |
 | Full E-order | Per-reference FIFO including across handoffs | WormholeOp + embargo + forward-strictly-to-R | Heaviest. |
 
 Waterken can be row 1 cheaply because it sidesteps the shortening
@@ -162,12 +237,15 @@ so there's no race between an old and a new path. OCapN, by treating
 shortening as a protocol-level feature, takes on the FIFO obligation that
 Waterken can sidestep.
 
-erights' position in this issue is row 3: Waterken-strength FIFO **plus**
-shortening for the availability win, *without* the WormholeOp tax of full
+erights' position in this issue is row 3: end-to-end reference FIFO
+preserved across shortening, *without* the WormholeOp tax of full
 E-order. Quoting his explicit framing: "vat-to-object fifo with promise
 shortening, with or without the improved pipelining, has no need
-whatsoever for WormholeOp." Row 3 is the sweet spot if it can be
-implemented; Ridley's `op:flush` proposal is an attempt at exactly that.
+whatsoever for WormholeOp." (His "vat-to-object" phrasing reduces to
+end-to-end reference FIFO in this design — a single sender's sends on a
+single logical reference must arrive in order.) Row 3 is the sweet spot
+if it can be implemented; Ridley's `op:flush` proposal is an attempt at
+exactly that.
 
 ## 4. How E solved it (for context)
 
@@ -333,7 +411,7 @@ optimizing for.
 
 | Dimension | Cap'n Proto embargo | Ridley `op:flush` (current latest) |
 |---|---|---|
-| What it preserves | E-order (per-reference FIFO) | Vat-to-object FIFO end-to-end |
+| What it preserves | E-order (per-wire-reference FIFO) | End-to-end reference FIFO (per-logical-reference, surviving shortening) |
 | Who initiates | Receiver of `Resolve` (Alice) | Promise-host ready to shorten (Bob) |
 | Where the buffer lives | Receiver's queue on the new direct path | Sender's local promise `p'` (Alice) |
 | Synchronization signal | `Disembargo` round-trip looped through the *old* path | `op:flush` / "flush-done" round-trip on A↔B; B→C 3PH gift sequenced behind forwarded messages |
@@ -695,15 +773,15 @@ erights opens the issue with as the motivation.
 ## 8. Where things stand
 
 - The group has *not* settled on a single ordering guarantee statement.
-  erights' position — the only useful FIFO is end-to-end vat-to-object —
-  appears to be the strongest credible reading, and Ridley is designing
-  toward it.
+  erights' position — the useful FIFO is end-to-end reference FIFO,
+  preserved across shortening — appears to be the strongest credible
+  reading, and Ridley is designing toward it.
 - erights has signaled willingness to revise his earlier preference for
   Waterken-style point-to-point FIFO over E-order if Ridley's approach
   works: "If it is doable simply enough, I might revise my retreat from
-  E-order to fifo." But also: vat-to-object FIFO with shortening is
-  strictly weaker than E-order and does **not** require WormholeOp; that
-  remains a key simplification.
+  E-order to fifo." But also: end-to-end reference FIFO with shortening
+  is strictly weaker than full E-order and does **not** require
+  WormholeOp; that remains a key simplification.
 - The current proposal (#5.5) preserves FIFO via flush-on-every-shortening
   and avoids the dispatch ambiguity of #5.3. It needs implementation and
   test coverage; gibson042 raised dispatch concerns earlier that seem
@@ -772,7 +850,7 @@ of truth for the dependency set; no hop can silently weaken or
 strengthen the constraint.
 
 **Stance on the disagreement.** This proposal sits at row 2 of the table
-in §3.4 (per-session FIFO is the protocol's contract) and gives the user
+in §3.5 (per-session FIFO is the protocol's contract) and gives the user
 a way to reach into row 3 selectively. Library code or hot paths that
 don't care about cross-reference ordering pay nothing; code that needs
 end-to-end ordering states that requirement explicitly per-message.
@@ -838,9 +916,10 @@ of `delivered-after` whose dependency list is generated automatically.
 **Open follow-ups to discuss.**
 
 - Could a user-space helper auto-include the previous send's promise on
-  the same target, giving free vat-to-object FIFO without flush? (This
-  basically reinvents per-target sequencing inside the deliverAfter
-  primitive — at the library level, not the protocol level.)
+  the same reference, giving free end-to-end reference FIFO without
+  flush? (This basically reinvents per-reference sequencing inside the
+  deliverAfter primitive — at the library level, not the protocol
+  level.)
 - Should `delivered-after` accept handoff descriptors as well as direct
   imports — i.e., "wait until this 3PH completes"? The proposal says
   yes; worth pinning down how a `desc:sig-envelope` resolves for the
@@ -868,11 +947,12 @@ the sender side. `false` means "unordered" (sender does not request
 sequencing, receiver invokes in delivery order — current behavior).
 
 **Stance on the disagreement.** This is a different way to land on
-row 3 of the table in §3.4: vat-to-object FIFO end-to-end. More
-precisely, it provides **per-(sender, target-promise) FIFO**, which
-is what users typically mean when they say "vat-to-object FIFO" — if
-you sent `z()` then `w()` on the same promise, the destination of
-that promise sees `z()` first regardless of path.
+row 3 of the table in §3.5: end-to-end reference FIFO across
+shortening. The seq is per-(sender, target-promise) — i.e.,
+per-(sender, logical-reference) — which is exactly what end-to-end
+reference FIFO requires: messages sent on the same logical reference
+arrive at the destination in send order, regardless of how the
+wire-level reference identity changed during shortening.
 
 **How it relates to flush.** Flush is a *per-shortening* coordination
 event between sender and resolver. Per-promise seq is a *per-message*
