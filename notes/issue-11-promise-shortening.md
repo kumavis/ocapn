@@ -389,6 +389,18 @@ list. Only the local invocation of *this* message waits.
             delivered-after>  ; sequence of promise refs (optional)
 ```
 
+**Authorship and forwarding.** The `delivered-after` list is set once by
+the original caller and is **never modified** by intermediate hops. As
+the message is forwarded along a promise chain (e.g., during shortening,
+or while a promise is still resolving), the field travels along
+unchanged. The promise references *inside* the field are transformed
+the same way as any other Passable Reference — a `desc:export` on the
+sender side becomes a `desc:import-object` on the receiver, and if a
+referenced promise needs to traverse a session boundary it triggers a
+normal three-party handoff. This keeps the caller as the single source
+of truth for the dependency set; no hop can silently weaken or
+strengthen the constraint.
+
 **Stance on the disagreement.** This proposal sits at row 2 of the table
 in §3.4 (per-session FIFO is the protocol's contract) and gives the user
 a way to reach into row 3 selectively. Library code or hot paths that
@@ -410,9 +422,12 @@ of `delivered-after` whose dependency list is generated automatically.
   joins, cross-receiver dependencies, and effects beyond shortening.
 - Implementable without any new protocol machinery beyond the parameter:
   the receiver already has all promise machinery needed to wait on
-  resolution.
+  resolution, and references inside the field use the existing Passable
+  transformation (including 3PH) to reach the receiver.
 - Surfaces ordering decisions in the wire format — easier to debug and
   reason about than implicit kernel embargoes.
+- Caller-only authorship means dependencies are deterministic from the
+  caller's perspective; intermediaries can't reorder semantics.
 
 **Cons / open questions.**
 
@@ -420,15 +435,6 @@ of `delivered-after` whose dependency list is generated automatically.
   to tell that you did not code correctly") still applies: library
   authors must remember to use it. Row-2 baseline + opt-in row-3 is
   semantically opt-in, and opt-in safety properties tend to be missed.
-- *Pre-arrival problem in the shortening case.* For the canonical
-  shortening race, Alice would want to send `w()` with
-  `delivered-after = [pZ]` where pZ is the answer position of `z()`.
-  But if `w()` arrives at Carol *before* `z()` does (the very race
-  we're trying to fix), Carol has no record of pZ yet. The receiver
-  needs a way to recognize a not-yet-seen promise reference and create
-  a placeholder for it. Solvable — pZ has a globally-disambiguatable
-  identity via the resolver descriptor — but it's extra machinery on
-  the receiver.
 - *Failure semantics.* If a promise in `delivered-after` breaks rather
   than fulfilling, what happens to the waiting message? Most likely
   the message should reject with the breakage reason, but we have to
@@ -439,16 +445,14 @@ of `delivered-after` whose dependency list is generated automatically.
   settlement? In principle yes — that's how promises behave — but
   this means the receiver may end up waiting on a chain that traverses
   yet more vats, which has its own latency and failure-mode story.
-- *Interaction with `op:listen`.* If `delivered-after` is implemented
-  as "wait until `op:listen` reports resolution," the receiver may
-  need to issue listens it wouldn't otherwise. Cost: an extra round
-  trip per dependency in the worst case.
-- *Can the user always express what they need?* If z is `op:deliver`,
-  Alice has a promise (the answer position) to use. If z is
-  `op:deliver-only`, Alice has no promise to wait on — she'd have to
-  promote it to `op:deliver` just to get a handle. Possible
-  alternative: synthesize a "completion" promise for `op:deliver-only`
-  too, used only for ordering.
+- *Listen cost.* The receiver effectively needs to be told when each
+  `delivered-after` reference resolves. If implemented via `op:listen`,
+  that's an extra round trip per dependency in the worst case. If the
+  reference is already locally hosted or already-resolved on arrival,
+  no extra traffic is needed.
+- *Receiver-side state.* Many deferred messages accumulate while waiting
+  on slow dependencies. Need a flow-control or back-pressure story,
+  especially under partial failure.
 
 **Comparison to existing primitives.**
 
@@ -463,17 +467,12 @@ of `delivered-after` whose dependency list is generated automatically.
 
 **Open follow-ups to discuss.**
 
-- Should `delivered-after` block delivery to the receiver, or only
-  invocation at the receiver? (User's framing: only invocation. Worth
-  confirming the receiver-buffer semantics.)
-- Could a "default" mode auto-include the previous send's promise on
+- Could a user-space helper auto-include the previous send's promise on
   the same target, giving free vat-to-object FIFO without flush? (This
   basically reinvents per-target sequencing inside the deliverAfter
-  primitive.)
+  primitive — at the library level, not the protocol level.)
 - Should `delivered-after` accept handoff descriptors as well as direct
-  imports — i.e., "wait until this 3PH completes"? The user explicitly
-  mentions handoffs.
-- What's the receiver-side state cost? If many deferred messages
-  accumulate, this is unbounded queue growth. Need a flow-control or
-  back-pressure story, especially under partial failure.
+  imports — i.e., "wait until this 3PH completes"? The proposal says
+  yes; worth pinning down how a `desc:sig-envelope` resolves for the
+  purposes of the wait.
 
