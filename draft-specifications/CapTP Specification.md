@@ -542,7 +542,8 @@ value which should be installed at the location specified in `answer-pos`. The
 <op:deliver to-desc           ; desc:export
             args              ; sequence
             answer-pos        ; positive integer | false
-            resolve-me-desc>  ; desc:import-object | desc:import-promise
+            resolve-me-desc   ; desc:import-object | desc:import-promise
+            delivered-after>  ; sequence | false
 ```
 
 The `resolve-me-desc` is a `desc:import-object` or `desc:import-promise` which
@@ -588,6 +589,39 @@ This is a `desc:import-object` or `desc:import-promise` which represents a
 reference to a local object which will be notified upon the resolution of the
 promise.
 
+### `delivered-after`
+
+This field carries an optional set of *invocation barriers*: promise
+references that MUST be settled before the receiver invokes the message
+on its target object.
+
+The value MUST be either `false` (no barriers) or a sequence whose
+elements are references to promises. References inside the sequence are
+subject to the same Passable transformation as references in `args`: a
+sender-side `desc:export` becomes a receiver-side `desc:import-object`
+or `desc:import-promise`, and references that cross a session boundary
+trigger a normal [Third Party Handoff](#third-party-handoffs).
+
+`delivered-after` is **delivery-ordering**, not **wire-ordering**. The
+message MUST still travel under the connection's normal FIFO
+guarantees, and an unsettled barrier MUST NOT delay the delivery or
+invocation of any *other* message on the connection. Only the local
+invocation of this specific message is deferred until its barriers are
+settled.
+
+`delivered-after` is set once by the original sender. When a message is
+forwarded along a promise chain or through a shortened path, the
+`delivered-after` field MUST be carried through unchanged. Intermediate
+hops MUST NOT add to, remove from, or reorder the sequence; only the
+references inside undergo the standard reference-forwarding rules.
+This makes the original sender the single source of truth for the
+message's invocation dependencies.
+
+A reference whose target is not a promise MUST be treated as
+already-settled. Implementations MAY require that all elements of
+`delivered-after` resolve to promise references and reject the message
+with an error otherwise.
+
 ### Receiving
 The message should be delivered to the object referenced by `to-desc` with the
 arguments specified in `args`. As the message is an `op:deliver`, the sender is
@@ -601,6 +635,27 @@ Messages sent to this promise MUST be delivered to the object when the promise
 resolves (unless the promise breaks). This promise should remain available until
 the [`op:gc-answer`](#op-gc-answer) message is received. If the `answer-pos` is
 false, then promise pipelining is not used.
+
+If `delivered-after` is a non-empty sequence, the receiver MUST defer
+invocation on the target object until every promise referenced in the
+sequence has been settled (fulfilled or broken). Per-connection FIFO
+continues to apply on the wire; other messages may be delivered and
+invoked in their normal order, including messages whose own
+`delivered-after` lists are already satisfied.
+
+If any promise referenced in `delivered-after` is broken, the receiver
+MUST NOT invoke the target object. Instead the message MUST be broken
+with the same reason: the result indicated by `resolve-me-desc` (if
+any) MUST be broken with the same reason, and the answer position
+indicated by `answer-pos` (if any) MUST be broken with the same reason.
+
+If a promise referenced in `delivered-after` itself forwards to another
+promise, the receiver MUST follow the chain to settlement; the
+constraint is satisfied only when an eventual fulfillment or breakage
+is reached, not when an intermediate forward occurs.
+
+When `delivered-after` is `false`, this clause has no effect and the
+message is handled as in earlier versions of this specification.
 
 ## [`op:pick`](#op-pick)
 
