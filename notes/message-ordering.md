@@ -204,10 +204,6 @@ identified in `notes/issue-11-promise-shortening.md`:
   the resolver before the 3PH switches the path. The sender's
   `flush-done` is the signal that all pre-shortening sends have
   been received.
-- **Per-message ordering tag** (per-promise sequence numbers).
-  The sender stamps each pipelined message with a per-promise
-  monotonic counter; the destination reorders by counter,
-  regardless of path. Shortening becomes invisible.
 
 Without any of these, OCapN's spec-as-written admits exactly the
 race that motivated [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11):
@@ -235,18 +231,15 @@ This is **strictly weaker** than full E-Order (§1.5). It does
   implement WormholeOp, so does not provide the forks property
   of full E-Order. The flush dance handles the single-sender
   promise-resolution case, which is exactly this tier.
-- **Per-promise sequence numbers** alternative — also targets
-  this tier (intrinsic per-message ordering).
 - **Markm's contemporary recommendation for OCapN.** "[D]on't
   standardize e-ordering—it's too hard. Back off to […]
   end-to-end reference FIFO."
 
 The cost difference is significant: end-to-end reference FIFO
 needs only path-switchover serialization (Cap'n Proto's
-Disembargo, Ridley's flush, or per-promise seq). Full E-Order
-needs cross-sender forks ordering, which on the network requires
-something like WormholeOp — and that complexity is what motivated
-the retreat.
+Disembargo or Ridley's flush). Full E-Order needs cross-sender
+forks ordering, which on the network requires something like
+WormholeOp — and that complexity is what motivated the retreat.
 
 ### 1.5 E-Order (Tree Order with forks)
 
@@ -591,21 +584,7 @@ with markm's contemporary recommendation in the
 end-to-end reference FIFO, *without* the WormholeOp-level
 complexity of full E-Order.
 
-### 2.8 OCapN + per-promise sequence numbers (work-in-progress)
-
-| | |
-|---|---|
-| Ordering | §1.4 end-to-end reference FIFO (intrinsic, per sender). Does not enforce the cross-sender forks property of full §1.5 E-Order. |
-| Cross-network | Yes |
-| Mutually defensive | Yes |
-| Promise shortening | Yes, transparent — sender tags pipelined messages with seq, destination reorders |
-
-Alternative explored in
-[`notes/issue-11-promise-shortening.md` §10.2](./issue-11-promise-shortening.md).
-Trades a per-message varint for the per-event flush ceremony;
-makes shortening fully transparent.
-
-### 2.9 OCapN + `delivered-after` only (work-in-progress)
+### 2.8 OCapN + `delivered-after` only (work-in-progress)
 
 | | |
 |---|---|
@@ -619,11 +598,11 @@ See
 [`notes/issue-11-promise-shortening.md` §10.1, §10.3](./issue-11-promise-shortening.md)
 and the prototype branch `claude/ocapn-deliver-after-WNRFV`.
 
-### 2.10 Goblins / SwingSet / other reference implementations
+### 2.9 Goblins / SwingSet / other reference implementations
 
 Not enumerated here — these are downstream choices made on top
 of the OCapN spec. Their behavior depends on which row of §2.6 /
-§2.7 / §2.8 / §2.9 they implement and on application-level
+§2.7 / §2.8 they implement and on application-level
 conventions on top.
 
 ---

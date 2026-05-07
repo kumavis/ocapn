@@ -1005,41 +1005,96 @@ been invoked AND (b) all `delivered-after` barriers have settled.
   pipeline on the same promise (via 3PH), each has their own seq
   space. Per-(sender, target) is robust to sharing.
 
+**Sender side.**
+
+- Per-promise monotonic counter, scoped to the sender's view of
+  the promise (a stable per-promise UUID minted at the sender —
+  see *promise identity* below).
+- Counter is discardable when the sender drops its end of the
+  ref via existing GC mechanisms.
+
+**Forwarder side.**
+
+- Forwarders relay `(promise-uuid, seq)` and original-sender
+  attribution intact. They do not re-attribute or renumber.
+- A forwarder cannot reorder; it can only delay. Receiver-side
+  reordering is the only correctness mechanism.
+
+**Receiver side.**
+
+- Per-(sender, promise-uuid) "highest contiguous seq delivered"
+  plus a reorder buffer.
+- **Buffered messages pin their argument capabilities from GC.**
+  A queued send carries refs in its arglist; those refs must
+  remain live until the send is invoked. The receiver cannot
+  release them while the message sits in the reorder buffer.
+- **No GC timeline guarantee on the buffer.** The receiver does
+  not own the sender's intent — it cannot know whether the
+  sender will ever produce the missing seq, or when. Buffered
+  state and pinned args persist until either (a) the gap fills,
+  (b) the promise resolves and the buffer drains, or (c) the
+  promise is broken (see failure-mode below). This is the main
+  cost of the design: indefinite tail latency for arg cleanup
+  under partial failure.
+
 **Cons / open questions.**
 
-- *Per-message wire overhead.* A varint per pipelined message. Small
-  but ubiquitous; flush's overhead is concentrated in bursts.
-  Roughly: if you send K messages per shortening event, flush costs
-  ~2 messages of overhead per event; seq costs ~K varints. Crossover
-  is at K ≈ 2 messages per shortening event. Real workloads with
-  many messages per shortening may favor flush; real workloads with
-  many shortenings per few messages may favor seq.
-- *Receiver-side state.* Per-promise "highest contiguous seq
-  delivered" plus a reorder buffer. Bounded by network reorder
-  window in the common case; unbounded under partial failure.
-- *Sender-side state.* Per-promise next-seq counter. Discardable
-  with the promise via existing GC mechanisms.
-- *Stable promise identity.* The seq is per-promise, so the promise
-  needs an identity that survives forwarding and shortening. OCapN
-  already has this via `desc:promise` (3PH-aware promise reference);
-  shortening preserves the logical promise identity even as the
-  wire-level descriptor changes.
-- *Failure mode for missing seq.* If seq=N is lost (e.g., session
-  abort during forwarding), seq=N+1, N+2, … buffer indefinitely at
-  the receiver. Need a timeout / break-on-gap mechanism. Standard
-  fix: break the promise after a configurable gap-size or
-  gap-duration.
-- *Multi-sender semantics.* Per-(sender, promise) FIFO does not
-  order messages from different senders relative to each other.
-  This matches the usual ocap "messages from independent sources
-  may interleave arbitrarily" expectation.
-- *Backwards compatibility.* Adding a positional field changes the
-  wire shape. Either bump the captp version or treat seq as
-  optional / sentinel.
+- *Per-message wire overhead.* A varint per pipelined message,
+  plus a stable per-promise UUID. Small but ubiquitous; flush's
+  overhead is concentrated in bursts. Roughly: if you send K
+  messages per shortening event, flush costs ~2 messages of
+  overhead per event; seq costs ~K varints. Crossover is at
+  K ≈ 2 messages per shortening event.
+- *Stable promise identity (UUID).* The seq lane is keyed by a
+  promise-stable identifier minted by the original sender that
+  survives forwarding and shortening. OCapN's current
+  `desc:promise` is 3PH-aware but session-scoped on the wire;
+  this proposal adds a sender-minted UUID that travels alongside.
+- *Multi-sender semantics.* Per-(sender, promise-uuid) FIFO does
+  not order messages from different senders relative to each
+  other. This matches the usual ocap "messages from independent
+  sources may interleave arbitrarily" expectation, and is what
+  end-to-end reference FIFO calls for (§1.4 in
+  `notes/message-ordering.md`).
 - *Promise resolution preserves seq tracking.* When a promise
   resolves to another promise, the receiver's seq state for the
-  outer promise transfers to the inner. Implementation detail but
-  worth pinning down.
+  outer promise transfers to the inner. Implementation detail
+  but worth pinning down.
+- *Backwards compatibility.* Adding fields changes the wire
+  shape. Either bump the captp version or treat seq /
+  promise-uuid as optional / sentinel.
+
+**Out of scope.**
+
+- *Cryptographic message signing.* Goes beyond what OCapN does
+  today and is unrelated to ordering. Sender attribution on
+  forwarded messages can ride existing session trust until and
+  unless OCapN gains a separate authentication layer. The seq
+  proposal does not introduce per-message signatures.
+- *Crash-recovery / renumbering.* If a vat crashes hard enough
+  to lose its seq counter state, all of its sessions end and
+  every promise it had is broken. Recovery is not a per-promise
+  concern.
+
+**Closing a seq lane (does need cryptography).**
+
+- Ending a sequence — i.e., the sender saying "no more sends on
+  this lane, you may release reorder state and pinned args" —
+  is the one place this proposal does call for an authenticator.
+  Otherwise a third party (or a malicious forwarder) can inject
+  a "lane closed" signal and starve in-flight messages. The
+  end-of-lane signal must be authenticated to the original
+  sender. This is a small, scoped addition rather than full
+  per-message signing.
+
+**Failure-mode handling for missing seq.**
+
+If seq=N is lost (e.g., session abort during forwarding),
+seq=N+1, N+2, … buffer indefinitely at the receiver and pin
+their args. A timeout / break-on-gap mechanism is required.
+Standard fix: break the promise after a configurable gap-size
+or gap-duration; sender detects via existing promise-broken
+propagation and re-establishes.
 
 **Comparison of overhead with flush, by scenario.**
 
@@ -1067,14 +1122,6 @@ seq does not prevent the Tribble 4-way race for non-shortening
 scenarios; it just makes shortening cheap. Cap'n Proto's
 "forward-strictly-to-R" rule is independently necessary for chain
 correctness if shortening is permitted.
-
-**Failure-mode handling.**
-
-Recommended approach for missing-seq under partial failure: when the
-receiver has buffered seq > N for some configurable gap window
-(e.g., 30 seconds or 1000 unfilled gaps), break the promise with a
-"shortening gap" reason. The sender can detect this via existing
-promise-broken propagation and re-establish.
 
 **Key insight.**
 
