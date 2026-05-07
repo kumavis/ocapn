@@ -499,21 +499,47 @@ So in markm's contemporary vocabulary
 Cap'n Proto provides **end-to-end reference FIFO** (per sender,
 per logical reference, surviving the one shortening event that
 moves a promise from a 2-hop path to a 1-hop path), *not* full
-E-ORDER. The `rpc.capnp` "E-Order" wording matches only the
-"Full Order" (single-reference) tier defined on
-`partial-order.html`; it does not match the "Tree Order" (forks)
-tier that markm's thesis chapter 19 calls E-ORDER. So the term is
-ambiguous between two tiers on the page Cap'n Proto cites, and
-the implementation only realizes the weaker one.
+E-ORDER. The `rpc.capnp` "E-Order" *definition*
+("two calls made on the same reference must be delivered in the
+order which they were made") matches the **Full Order** tier
+(single-reference, two-party) at the top of `partial-order.html`
+— and the embargo machinery generalizes that property to survive
+promise resolution. The page it cites also defines a stronger
+**Tree Order** tier that adds cross-sender forks, and titles
+itself *Partially-Ordered Message Delivery* (forks + joins).
+Cap'n Proto's text picks the narrowest tier from the page and
+the implementation matches it; what's potentially confusing is
+that the same name "E-Order" / "E-ORDER" is used at both
+granularities in the literature. A reader who follows the link
+expecting forks will be disappointed.
 
-<!-- Implementation note removed: previously claimed Cap'n Proto's
-C++ impl uses `kj::evalLater()` to mirror vat-turn semantics, with
-a verbatim "E-ordering may be broken if `CompletableFuture`
-completes immediately" quote. `CompletableFuture` is a Java type,
-not a KJ/C++ one, and the quoted phrase could not be located in
-the Cap'n Proto source or any other cited reference. See PR action
-items. -->
+#### Implementation note: ordering enforcement in `rpc.c++`
 
+There is a real ordering-related `evalLater()` in Cap'n Proto's
+C++ implementation, at
+[`c++/src/capnp/rpc.c++` line 2803](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/capnp/rpc.c%2B%2B#L2803),
+in the message loop. The TODO comment alongside it describes the
+race it prevents:
+
+> "We add an `evalLater()` here so that anything we needed to do
+> in reaction to the previous message has a chance to complete
+> before the next message is handled. In particular, without
+> this, I observed an ordering problem: I saw a case where a
+> `Return` message was followed by a `Resolve` message, but the
+> `PromiseClient` associated with the `Resolve` had its
+> `resolve()` method invoked _before_ any `PromiseClient`s
+> associated with pipelined capabilities resolved by the
+> `Return`. This could lead to an incorrectly-ordered interaction
+> between `PromiseClient`s when they resolve to each other."
+> — `rpc.c++` comment at the call site
+
+This is `kj::evalLater` from the [KJ async
+library](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/kj/async.h),
+not Java's `CompletableFuture`. (An earlier draft of these notes
+conflated the two; the actual mechanism is KJ's deferred
+continuation, used to break depth-first PromiseClient resolution
+into separate event-loop turns so that `Return`-then-`Resolve`
+ordering is preserved at the level of `PromiseClient` callbacks.)
 ### 2.6 OCapN — current draft
 
 | | |
@@ -726,15 +752,23 @@ In [Spritely "Conundrum: Message Ordering" post #9](https://community.spritely.i
 `notes/references/spritely-conundrum-message-ordering-28-post9.html`),
 markm uses the bug as part of his broader case for retreating
 from end-to-end E-ORDER. He opens by quoting an earlier passage
-(rendered as a `<blockquote>` in the Discourse HTML; original
-attribution unverified — likely cwebber from the linked cap-talk
-thread):
+(rendered as a `<blockquote>` in the Discourse HTML), which
+**originates with cwebber** in the
+[cap-talk thread](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ)
+under the subject "Examples of E-Order being useful" — verified
+against the cap-talk archive mirror at
+`notes/references/google-groups-cap-talk-R5kc06XGqWs-WDraOqkQAgAJ.html.gz`,
+where the same paragraph appears as cwebber's authored post and
+is quoted back in a follow-up that begins "[cwebber] writes:"
+(square brackets ours: the source uses cwebber's full legal
+name; we substitute the GitHub handle for consistency).
 
 > "Prior to the 'Lost Resolution Bug', E-Order appears to be
 > something delivered 'for free', falling out of the
 > implementation naturally. We can jump up and down and say
-> 'look at this thing we got at no extra cost!'" — quoted in
-> markm Spritely #9; original speaker pending verification
+> 'look at this thing we got at no extra cost!'"
+> — cwebber, cap-talk "Examples of E-Order being useful";
+> re-quoted by markm in Spritely #9
 
 markm's own response in the same post:
 
@@ -790,10 +824,20 @@ fixes.
 - **Ridley's `op:flush` proposal** addresses the
   promise-shortening (Tribble 4-way) version, *not* the
   Lost-Resolution (hashtable-key) version.
-- **Mark Miller's contemporary view** (Spritely #8, #9): drop
-  end-to-end E-ORDER in favor of point-to-point FIFO, with
-  e-order recovered at the user level via "appropriate
-  affordances and conventions."
+- **Mark Miller's contemporary view** has two stages, with the
+  later one **superseding** the earlier:
+  - *Spritely thread #8 / #9 (Oct 2022):* drop end-to-end
+    E-ORDER in favor of "Tyler's Waterken point-to-point FIFO,"
+    with e-order recovered at the user level via "appropriate
+    affordances and conventions."
+  - *Endo meeting transcript (May 2026):* clarify that
+    "point-to-point" was a poorly-chosen term; the target tier
+    is **end-to-end reference FIFO** (§1.4), strictly stronger
+    than per-CapTP-session FIFO and strictly weaker than full
+    E-ORDER. Promise shortening *is* required (for availability)
+    and the protocol must add explicit synchronization at every
+    shortening event to preserve §1.4. This 2026 framing is the
+    current reference for OCapN.
 
 ---
 
