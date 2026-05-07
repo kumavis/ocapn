@@ -105,8 +105,11 @@ or remotable-ref redirection).
 In Mark Miller's contemporary framing
 ([Endo meeting 2026-05-06 transcript](./references/Endo%20Meeting%2020260506%20transcript.md)),
 this is what he had wanted to call "point-to-point FIFO" all
-along, but the term collided with TCP's per-channel meaning. He
-now calls it **end-to-end FIFO per reference**:
+along, but the term collided with TCP's per-channel meaning.
+This document uses **end-to-end reference FIFO** for the same
+idea (markm sometimes phrases it as "end-to-end FIFO per
+reference" in the transcript; we use the former wording for
+consistency).
 
 > "I'm not willing to retreat from what I'll call **end-to-end
 > FIFO** (per reference)—I'm just avoiding the confusing
@@ -121,6 +124,107 @@ now calls it **end-to-end FIFO per reference**:
 > I'd say it's not a different promise but a **different path**.
 > At the level of application code it's the same promise; it's
 > just taking a different path now." — markm, Endo meeting
+
+#### FIFO is per *reference*, not per ultimate target
+
+Two messages on the same logical reference are FIFO with each
+other. Two messages on different references that *happen to
+target the same object* are **not** FIFO with each other. In
+particular, this means a promise that resolves to Carol and a
+direct remotable reference to that same Carol are independent
+FIFO streams; messages on the promise are not synchronized
+against messages on the direct reference, even after the
+promise has resolved.
+
+> "If you have a promise, successive messages sent on that same
+> promise must be delivered to whatever the fulfillment
+> eventually is. All messages sent on that promise must arrive
+> in the order they were sent, to that eventual fulfillment.
+> **If several promises eventually share the same fulfillment,
+> FIFO is still per promise; there doesn't need to be
+> inter-promise coordination just because they fulfill to the
+> same target.**" — markm, Endo meeting
+
+Concretely, if Alice holds:
+
+- a promise `p` (which she sent `foo()` to, before learning that
+  `p` resolves to Carol), and
+- a direct remotable reference `c` to Carol (which she sent
+  `bar()` to),
+
+then `foo()` and `bar()` may be delivered to Carol in either
+order. The FIFO guarantee binds messages sent on `p` to each
+other, and messages sent on `c` to each other, but not the two
+streams to one another. Cross-reference ordering would only be
+enforced by full E-ORDER (§1.5), which markm now recommends
+*against* standardizing for cost reasons.
+
+#### Promise shortening requires additional synchronization
+
+End-to-end reference FIFO is "for free" — implied by per-pair
+vat-to-vat FIFO — *only when there is no protocol-level promise
+shortening*:
+
+> "Waterken had **no promise shortening**. If OCapN didn't
+> shorten promises, then 'point-to-point' in the sense of local
+> **vat-to-vat FIFO** would be enough to get what I'll call
+> **end-to-end reference FIFO**. Vat-to-vat FIFO would implicitly
+> give you end-to-end reference FIFO in the absence of
+> shortening, as in Waterken." — markm, Endo meeting
+
+The reason: without shortening, every message Alice sends on
+reference `p` traverses the same wire path. Per-CapTP-session
+FIFO (§1.3) on each link of that fixed path naturally composes
+into end-to-end reference FIFO at the destination.
+
+Promise shortening *changes the wire path mid-stream.* Before
+shortening, Alice's sends on `p` travel A→B→C; after
+shortening, they travel A→C directly. Per-session FIFO does
+**not** relate the two paths — a message Alice sent before
+shortening (still in flight along A→B→C) can be overtaken by a
+later message Alice sent after shortening (going direct A→C).
+End-to-end reference FIFO, the property the application sees,
+would be violated.
+
+But shortening is too valuable to give up. Markm in the Endo
+meeting:
+
+> "Promises **must** shorten: once it's clear that messages on a
+> promise-chain go to **vat C** even though **vat B** had been
+> the intermediary, it should at least be the case that after
+> quiescence, if **vat B** goes offline, it does not further
+> affect communication A→C. Because practically vats go offline
+> a lot, and the cost of never shortening promises is too high
+> (for availability)." — markm, Endo meeting
+
+So OCapN cannot simply adopt Waterken-style "no shortening" if
+it wants end-to-end reference FIFO at row §1.4. To preserve §1.4
+*while* admitting shortening, the protocol must add explicit
+synchronization at every shortening event. The mechanism choices
+identified in `notes/issue-11-promise-shortening.md`:
+
+- **Receiver-side embargo** (Cap'n Proto's Disembargo). When a
+  promise resolves to a remote ref, the receiver embargoes the
+  new direct path, sends a `Disembargo` along the old path, and
+  releases the embargo only when the Disembargo round-trips
+  back. The old path's drainage is what the round-trip
+  signals.
+- **Sender-side flush** (Ridley's `op:flush`). The
+  promise-resolver tells the sender to quiesce its sends through
+  the resolver before the 3PH switches the path. The sender's
+  `flush-done` is the signal that all pre-shortening sends have
+  been received.
+- **Per-message ordering tag** (per-promise sequence numbers).
+  The sender stamps each pipelined message with a per-promise
+  monotonic counter; the destination reorders by counter,
+  regardless of path. Shortening becomes invisible.
+
+Without any of these, OCapN's spec-as-written admits exactly the
+race that motivated [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11):
+the application sees one promise, the protocol sees two paths,
+and ordering breaks at the path switchover.
+
+#### Strictly weaker than full E-ORDER
 
 This is **strictly weaker** than full E-ORDER (§1.5). It does
 *not* enforce the cross-sender forks constraint:
@@ -145,7 +249,7 @@ This is **strictly weaker** than full E-ORDER (§1.5). It does
   this tier (intrinsic per-message ordering).
 - **Markm's contemporary recommendation for OCapN.** "[D]on't
   standardize e-ordering—it's too hard. Back off to […]
-  end-to-end FIFO per reference."
+  end-to-end reference FIFO."
 
 The cost difference is significant: end-to-end reference FIFO
 needs only path-switchover serialization (Cap'n Proto's
@@ -456,7 +560,7 @@ Ridley's current proposal in
 and the prototype branch `claude/ocapn-op-flush-WNRFV`. Aligned
 with markm's contemporary recommendation in the
 [Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md):
-end-to-end FIFO per reference, *without* the WormholeOp-level
+end-to-end reference FIFO, *without* the WormholeOp-level
 complexity of full E-ORDER.
 
 ### 2.8 OCapN + per-promise sequence numbers (alternative proposal)
@@ -850,7 +954,7 @@ for offline reading.
 
 ### Mark Miller's contemporary view
 
-- **[Endo meeting 2026-05-06 — message ordering](./references/Endo%20Meeting%2020260506%20transcript.md)** (edited transcript) — markm clarifies that "point-to-point FIFO" was a poorly-chosen term for what he meant; the correct framing is **end-to-end FIFO per reference**. Also: don't standardize full E-ORDER, the modern Lost Resolution Bug definition, and why promise shortening is required for availability.
+- **[Endo meeting 2026-05-06 — message ordering](./references/Endo%20Meeting%2020260506%20transcript.md)** (edited transcript) — markm clarifies that "point-to-point FIFO" was a poorly-chosen term for what he meant; the correct framing is **end-to-end reference FIFO** (markm phrases it variously as "end-to-end FIFO per reference"). Also: don't standardize full E-ORDER, the modern Lost Resolution Bug definition, and why promise shortening is required for availability.
 - [Spritely Conundrum: Message Ordering #8 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/8) — local mirror `notes/references/spritely-conundrum-message-ordering-28-post8.html`
 - [Spritely Conundrum: Message Ordering #9 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/9) — local mirror `notes/references/spritely-conundrum-message-ordering-28-post9.html`
 - [Spritely Conundrum: Message Ordering — thread index](https://community.spritely.institute/t/conundrum-message-ordering/28) — local mirror `notes/references/spritely-conundrum-message-ordering-28.json`
