@@ -189,13 +189,14 @@ would be violated.
 But shortening is too valuable to give up. Markm in the Endo
 meeting:
 
-> "Promises **must** shorten: once it's clear that messages on a
-> promise-chain go to **vat C** even though **vat B** had been
-> the intermediary, it should at least be the case that after
-> quiescence, if **vat B** goes offline, it does not further
-> affect communication A→C. Because practically vats go offline
-> a lot, and the cost of never shortening promises is too high
-> (for availability)." — markm, Endo meeting
+> "I think promises **must** shorten: [o]nce it[']s clear that
+> messages on a promise-chain go to **vat C** even though **vat B**
+> had been the [intermediary], it should at least be the case that
+> after qu[i]e[s]cence, [...] if **vat B** goes offline, it does
+> not further affect communication A→C. Because practically vats
+> go offline a lot, and the cost of never shortening promises is
+> too high (for availability)." — markm, Endo meeting (transcript
+> typos in `intermediary` and `quiescence` corrected in brackets)
 
 So OCapN cannot simply adopt Waterken-style "no shortening" if
 it wants end-to-end reference FIFO at row §1.4. To preserve §1.4
@@ -282,18 +283,23 @@ Visualizable as a Hasse diagram (thesis Figure 19.1).
 unambiguous example. CapTP-of-E / Pluribus aspires to it across
 the network and would need WormholeOp to enforce it (the canonical
 erights page marks WormholeOp "Not yet implemented"). **Cap'n
-Proto's `rpc.capnp` claims "E-Order"** and cites
+Proto's `rpc.capnp` uses the term "E-Order"** and cites
 `erights/partial-order.html`, but its embargo machinery only
 handles the single-sender promise-resolution case — it provides
 end-to-end reference FIFO (§1.4), *not* the cross-sender forks
-property. See §2.5 for the discrepancy. Markm currently
+property. See §2.5 for the discussion. Markm currently
 recommends *not* standardizing this tier for OCapN
 ([Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)):
 
 > "My response to that complexity is: **don't standardize
-> e-ordering**—it's too hard. Back off to […] end-to-end FIFO
-> per reference. Concretely, we **allow Y from Bob to Carol to
-> arrive before X from Alice to Carol**." — markm
+> e-ordering**—it's too hard. Back off to the weaker FIFO I had
+> been calling 'point-to-point' just to *name* something less
+> onerous than e-order. Concretely, we **allow Y from Bob to
+> Carol to arrive before X from Alice to Carol**." — markm
+
+(Later in the same conversation markm renames "point-to-point"
+to "end-to-end FIFO per reference" — see §1.4. The two phrasings
+refer to the same target tier.)
 
 ### 1.6 E-ORDER with joins (Partial Order)
 
@@ -405,7 +411,7 @@ visualizable as a Hasse diagram.
 
 | | |
 |---|---|
-| Ordering | §1.5 E-ORDER aspirational; in current implementations the Lost Resolution Bug means a Far reference is downgraded to a Promise on 3-vat introduction |
+| Ordering | §1.5 E-ORDER aspirational; in 2003-era E implementations (per `passing-rules.html`) the Lost Resolution Bug means a Far reference is downgraded to a Promise on 3-vat introduction |
 | Cross-network | Yes (VatTP) |
 | Mutually defensive | Yes by design — VatTP encrypts; introductions are cryptographic handoffs |
 | Promise shortening | Yes via redirector + `whenMoreResolved` + WormholeOp; **WormholeOp is "Not yet implemented" per the canonical erights.org page**, which is why Lost Resolution exists |
@@ -420,7 +426,7 @@ remaining piece that — when implemented — would close the
 
 | | |
 |---|---|
-| Ordering | §1.4 end-to-end reference FIFO, enforced. **Note: `rpc.capnp` calls this "E-Order" but it is not full §1.5 E-ORDER** — see below. |
+| Ordering | §1.4 end-to-end reference FIFO, enforced. **Note: `rpc.capnp` uses the term "E-Order" — that term ambiguously names two tiers on the page it cites; Cap'n Proto delivers the weaker (single-reference) one, not the §1.5 E-ORDER tier with cross-sender forks** — see below. |
 | Cross-network | Yes |
 | Mutually defensive | Yes (security model inherited from CapTP-of-E) |
 | Promise shortening | Yes, *only* shortening from a 2-hop path to a 1-hop path. Multi-hop chains are pinned via the **forward-strictly-to-R** rule (line 746-754 of `rpc.capnp`) to avoid the Tribble 4-way race. Path switchover is serialized by Embargo / Disembargo. Trades long-term availability (R can never go offline without breaking the chain) for protocol simplicity. |
@@ -479,25 +485,34 @@ is the §1.4 tier: end-to-end reference FIFO, per sender.
   mechanism. Cap'n Proto explicitly does not implement WormholeOp.
 - Multi-hop chain shortening (Tribble 4-way race). The
   forward-strictly-to-R rule sidesteps this by *giving up* on
-  further shortening: "Once a promise P has been resolved to a
+  further shortening: "On[c]e a promise P has been resolved to a
   remote object reference R, then all further messages received
   addressed to P will be forwarded strictly to R. Even if it
   turns out later that R is itself a promise, and has resolved
   to some other object Q, messages sent to P will still be
-  forwarded to R, not directly to Q."
+  forwarded to R, not directly to Q." (The bracketed `c` is a
+  typo correction — the source has `One a promise P` at
+  `rpc.capnp` line 746.)
 
 So in markm's contemporary vocabulary
 ([Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)),
 Cap'n Proto provides **end-to-end reference FIFO** (per sender,
 per logical reference, surviving the one shortening event that
 moves a promise from a 2-hop path to a 1-hop path), *not* full
-E-ORDER. The `rpc.capnp` "E-Order" wording is — measured against
-the source it cites — inaccurate.
+E-ORDER. The `rpc.capnp` "E-Order" wording matches only the
+"Full Order" (single-reference) tier defined on
+`partial-order.html`; it does not match the "Tree Order" (forks)
+tier that markm's thesis chapter 19 calls E-ORDER. So the term is
+ambiguous between two tiers on the page Cap'n Proto cites, and
+the implementation only realizes the weaker one.
 
-Implementation note: in C++, "E-ordering may be broken if
-`CompletableFuture` completes immediately"; the impl uses
-`kj::evalLater()` to defer all method calls into a later turn,
-mirroring vat-turn semantics.
+<!-- Implementation note removed: previously claimed Cap'n Proto's
+C++ impl uses `kj::evalLater()` to mirror vat-turn semantics, with
+a verbatim "E-ordering may be broken if `CompletableFuture`
+completes immediately" quote. `CompletableFuture` is a Java type,
+not a KJ/C++ one, and the quoted phrase could not be located in
+the Cap'n Proto source or any other cited reference. See PR action
+items. -->
 
 ### 2.6 OCapN — current draft
 
@@ -710,22 +725,30 @@ In [Spritely "Conundrum: Message Ordering" post #9](https://community.spritely.i
 (local mirror:
 `notes/references/spritely-conundrum-message-ordering-28-post9.html`),
 markm uses the bug as part of his broader case for retreating
-from end-to-end E-ORDER:
+from end-to-end E-ORDER. He opens by quoting an earlier passage
+(rendered as a `<blockquote>` in the Discourse HTML; original
+attribution unverified — likely cwebber from the linked cap-talk
+thread):
 
 > "Prior to the 'Lost Resolution Bug', E-Order appears to be
 > something delivered 'for free', falling out of the
 > implementation naturally. We can jump up and down and say
-> 'look at this thing we got at no extra cost!'"
->
+> 'look at this thing we got at no extra cost!'" — quoted in
+> markm Spritely #9; original speaker pending verification
+
+markm's own response in the same post:
+
 > "This is indeed one of the considerations leading me to
-> retreat to Tyler's Waterken point-to-point fifo."
+> retreat to Tyler's Waterken point-to-point fifo." — markm,
+> Spritely #9
 
 So Lost Resolution is the historical moment that revealed
 E-ORDER is **not** free in distributed implementations — it has
 "uncomfortable edges which either must be programmed around or
 be understood not to be exactly what we thought" (cwebber, in
 the [cap-talk thread](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ)
-linked from markm #9; local mirror
+that cwebber introduces in Spritely post #6 and that markm
+re-quotes in #9; local mirror
 `notes/references/google-groups-cap-talk-R5kc06XGqWs-WDraOqkQAgAJ.html.gz`).
 
 That motivates the view that something weaker (Waterken-style
@@ -893,9 +916,13 @@ the destination.
   otherwise). OCapN does not currently carry the
   Resolved-vs-Unresolved distinction the Lost Resolution Bug
   hangs on, so the bug does not manifest in the same form.
-- markm (Spritely thread #9) explicitly cites WormholeOp's cost
+- markm (Spritely thread #8/#9) cites the Lost Resolution Bug
   as one reason to retreat from end-to-end E-ORDER to
-  point-to-point FIFO with user-level affordances.
+  point-to-point FIFO with user-level affordances. The cost of
+  WormholeOp specifically is named in the [Endo meeting
+  2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)
+  ("having to standardize some form of **wormhole op**, flipped
+  the cost–benefit for me") rather than in #9.
 
 ---
 
@@ -1012,12 +1039,17 @@ Questions, Answers, Imports, Exports.
 between the source-and-arrowhead points; forks where references
 get sent as arguments.
 
-**E-ORDER.** Markm's thesis name for fail-stop FIFO with forks
-(and joins). The forks property is what distinguishes full
-E-ORDER from end-to-end reference FIFO. See §1.5 and §1.6.
-Markm's contemporary view (Endo meeting 2026-05-06) is that full
-E-ORDER is too costly to standardize over the network and OCapN
-should target end-to-end reference FIFO (§1.4) instead.
+**E-ORDER.** Markm's thesis (Chapter 19) name for fail-stop FIFO
+with forks; joins (§19.5) are presented as part of the same
+chapter and so can also be considered part of E-ORDER. This
+document splits them for clarity: §1.5 is "E-ORDER (Tree Order
+with forks)" and §1.6 is "E-ORDER with joins (Partial Order)" —
+matching the tier names on `partial-order.html` and
+`after-both.html`. The forks property is what distinguishes
+E-ORDER from end-to-end reference FIFO. Markm's contemporary view
+(Endo meeting 2026-05-06) is that full E-ORDER is too costly to
+standardize over the network and OCapN should target end-to-end
+reference FIFO (§1.4) instead.
 
 **Fail-stop FIFO.** Per markm thesis §19.7, "the guarantee that
 a message sent later on a channel will only be delivered if all
