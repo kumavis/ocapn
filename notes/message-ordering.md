@@ -501,7 +501,7 @@ moves a promise from a 2-hop path to a 1-hop path), *not* full
 E-ORDER. The `rpc.capnp` "E-Order" *definition*
 ("two calls made on the same reference must be delivered in the
 order which they were made") matches the **Full Order** tier
-(single-reference, two-party) at the top of `partial-order.html`
+(single-reference, two-party) at the top of [`partial-order.html`](http://erights.org/elib/concurrency/partial-order.html)
 — and the embargo machinery generalizes that property to survive
 promise resolution. The page it cites also defines a stronger
 **Tree Order** tier that adds cross-sender forks, and titles
@@ -533,12 +533,11 @@ race it prevents:
 > — `rpc.c++` comment at the call site
 
 This is `kj::evalLater` from the [KJ async
-library](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/kj/async.h),
-not Java's `CompletableFuture`. (An earlier draft of these notes
-conflated the two; the actual mechanism is KJ's deferred
-continuation, used to break depth-first PromiseClient resolution
-into separate event-loop turns so that `Return`-then-`Resolve`
-ordering is preserved at the level of `PromiseClient` callbacks.)
+library](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/kj/async.h):
+a deferred continuation that breaks depth-first `PromiseClient`
+resolution into separate event-loop turns so that
+`Return`-then-`Resolve` ordering is preserved at the level of
+`PromiseClient` callbacks.
 ### 2.6 OCapN — current draft
 
 | | |
@@ -758,9 +757,7 @@ under the subject "Examples of E-Order being useful" — verified
 against the cap-talk archive mirror at
 `notes/references/google-groups-cap-talk-R5kc06XGqWs-WDraOqkQAgAJ.html.gz`,
 where the same paragraph appears as cwebber's authored post and
-is quoted back in a follow-up that begins "[cwebber] writes:"
-(square brackets ours: the source uses cwebber's full legal
-name; we substitute the GitHub handle for consistency).
+is quoted back in a follow-up that begins "[cwebber] writes:".
 
 > "Prior to the 'Lost Resolution Bug', E-Order appears to be
 > something delivered 'for free', falling out of the
