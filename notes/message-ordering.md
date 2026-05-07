@@ -189,14 +189,13 @@ would be violated.
 But shortening is too valuable to give up. Markm in the Endo
 meeting:
 
-> "I think promises **must** shorten: [o]nce it[']s clear that
+> "I think promises **must** shorten: [o]nce it's clear that
 > messages on a promise-chain go to **vat C** even though **vat B**
-> had been the [intermediary], it should at least be the case that
-> after qu[i]e[s]cence, [...] if **vat B** goes offline, it does
+> had been the intermediary, it should at least be the case that
+> after quiescence, [...] if **vat B** goes offline, it does
 > not further affect communication A→C. Because practically vats
 > go offline a lot, and the cost of never shortening promises is
-> too high (for availability)." — markm, Endo meeting (transcript
-> typos in `intermediary` and `quiescence` corrected in brackets)
+> too high (for availability)." — markm, Endo meeting
 
 So OCapN cannot simply adopt Waterken-style "no shortening" if
 it wants end-to-end reference FIFO at row §1.4. To preserve §1.4
