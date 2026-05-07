@@ -76,7 +76,7 @@ My response to that complexity is: **don’t standardize e-ordering**—it’s t
 
 **Mark S. Miller:** Waterken had **no promise shortening**. If OCapN didn’t shorten promises, then “point-to-point” in the sense of local **vat-to-vat FIFO** would be enough to get what I’ll call **end-to-end reference FIFO**. Vat-to-vat FIFO would implicitly give you end-to-end reference FIFO in the absence of shortening, as in Waterken.
 
-I think promises **must** shorten: Once it's clear that messages on a promise-chain go to **vat C** even though **vat B** had been the intermediary, it should at least be the case that after quiescence, that if **vat B** goes offline, it does not further affect communication A->C. Because practically vats go offline a lot, and the cost of never shortening promises is too high (for availability).
+I think promises **must** shorten: Once it's clear that messages on a promise-chain go to **vat C** even though **vat B** had been the intermediary, it should at least be the case that after quiescence, if **vat B** goes offline, it does not further affect communication A->C. Because practically vats go offline a lot, and the cost of never shortening promises is too high (for availability).
 
 **kumavis:** If the OCapN guarantee is **end-to-end FIFO per reference**, isn’t that very close to **e-order**?
 

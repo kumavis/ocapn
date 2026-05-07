@@ -189,10 +189,10 @@ would be violated.
 But shortening is too valuable to give up. Markm in the Endo
 meeting:
 
-> "I think promises **must** shorten: [o]nce it's clear that
+> "I think promises **must** shorten: Once it's clear that
 > messages on a promise-chain go to **vat C** even though **vat B**
 > had been the intermediary, it should at least be the case that
-> after quiescence, [...] if **vat B** goes offline, it does
+> after quiescence, if **vat B** goes offline, it does
 > not further affect communication A→C. Because practically vats
 > go offline a lot, and the cost of never shortening promises is
 > too high (for availability)." — markm, Endo meeting
@@ -484,14 +484,14 @@ is the §1.4 tier: end-to-end reference FIFO, per sender.
   mechanism. Cap'n Proto explicitly does not implement WormholeOp.
 - Multi-hop chain shortening (Tribble 4-way race). The
   forward-strictly-to-R rule sidesteps this by *giving up* on
-  further shortening: "On[c]e a promise P has been resolved to a
+  further shortening: "[Once] a promise P has been resolved to a
   remote object reference R, then all further messages received
   addressed to P will be forwarded strictly to R. Even if it
   turns out later that R is itself a promise, and has resolved
   to some other object Q, messages sent to P will still be
-  forwarded to R, not directly to Q." (The bracketed `c` is a
-  typo correction — the source has `One a promise P` at
-  `rpc.capnp` line 746.)
+  forwarded to R, not directly to Q." (Bracketed `[Once]`
+  substitutes for a typo at the source: `rpc.capnp` line 746
+  reads `One a promise P`.)
 
 So in markm's contemporary vocabulary
 ([Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)),
