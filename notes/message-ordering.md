@@ -18,7 +18,7 @@ Contents:
 ## 1. Types of ordering guarantees
 
 Listed weakest to strongest. The named tiers come primarily from
-[Mark Miller's thesis, *Robust Composition* §19](./references/markm-thesis/chapter-19-delivering-messages-in-e-order.md),
+[Mark Miller's thesis, *Robust Composition* §19][markm-thesis-ch19],
 with §19.7 ("Notes on Related Work") providing the comparative
 taxonomy.
 
@@ -93,7 +93,7 @@ changes underneath (because of shortening, three-party handoff,
 or remotable-ref redirection).
 
 In Mark Miller's contemporary framing
-([Endo meeting 2026-05-06 transcript](./references/Endo%20Meeting%2020260506%20transcript.md)),
+([Endo meeting 2026-05-06 transcript][endo-transcript]),
 this is what he had wanted to call "point-to-point FIFO" all
 along, but the term collided with TCP's per-channel meaning.
 This document uses **end-to-end reference FIFO** for the same
@@ -190,8 +190,8 @@ meeting:
 So OCapN cannot simply adopt Waterken-style "no shortening" if
 it wants end-to-end reference FIFO at row §1.4. To preserve §1.4
 *while* admitting shortening, the protocol must add explicit
-synchronization at every shortening event. The mechanism choices
-identified in `notes/issue-11-promise-shortening.md`:
+synchronization at every shortening event. Two patterns in
+play in [ocapn/ocapn#11][ocapn-github-11] are:
 
 - **Receiver-side embargo** (Cap'n Proto's Disembargo). When a
   promise resolves to a remote ref, the receiver embargoes the
@@ -206,7 +206,7 @@ identified in `notes/issue-11-promise-shortening.md`:
   been received.
 
 Without any of these, OCapN's spec-as-written admits exactly the
-race that motivated [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11):
+race that motivated [ocapn/ocapn#11][ocapn-github-11]:
 the application sees one promise, the protocol sees two paths,
 and ordering breaks at the path switchover.
 
@@ -253,7 +253,7 @@ forked reference's authority is "post-X target" — only enabling
 messages to be delivered after X (and any other prior sends on
 the original reference) have already been delivered.
 
-Visualizable as a Hasse diagram (thesis Figure 19.1).
+Visualizable as a Hasse diagram ([thesis Figure 19.1][markm-thesis-figure-19-1]).
 
 > "The reference Bob receives from Alice has no more power in
 > Bob's hands than it had in Alice's. The assumptions Alice needs
@@ -271,7 +271,7 @@ handles the single-sender promise-resolution case — it provides
 end-to-end reference FIFO (§1.4), *not* the cross-sender forks
 property. See §2.5 for the discussion. Markm currently
 recommends *not* standardizing this tier for OCapN
-([Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)):
+([Endo meeting 2026-05-06][endo-transcript]):
 
 > "My response to that complexity is: **don't standardize
 > e-ordering**—it's too hard. Back off to the weaker FIFO I had
@@ -290,7 +290,7 @@ ordering constraints are the joins of the orders of `a` and `b`.
 A message on the joined promise is delivered only after every
 prior send on either input. This is what's needed for grant
 matching and other distributed-equality patterns. (Thesis §19.5,
-[erights `after-both.html`](http://erights.org/elib/equality/after-both.html).)
+[erights `after-both.html`][erights-after-both].)
 
 **Where it shows up:** E. Not commonly carried into other ocap
 systems.
@@ -415,14 +415,14 @@ remaining piece that — when implemented — would close the
 
 #### What `rpc.capnp` claims
 
-From [`rpc.capnp` lines 61-65](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/capnp/rpc.capnp#L61-L65):
+From [`rpc.capnp` lines 61-65][capn-rpc-capnp-l61]:
 
 > "Unless otherwise specified, messages must be delivered to the
 > receiving application in the same order in which they were
 > initiated by the sending application. The goal is to support
 > 'E-Order', which states that two calls made on the same
 > reference must be delivered in the order which they were made:
-> http://erights.org/elib/concurrency/partial-order.html"
+> [http://erights.org/elib/concurrency/partial-order.html][erights-partial-order]"
 
 This citation is misleading. The page it links — erights
 `partial-order.html` — defines E-Order as **fail-stop FIFO with
@@ -476,14 +476,14 @@ is the §1.4 tier: end-to-end reference FIFO, per sender.
   reads `One a promise P`.)
 
 So in markm's contemporary vocabulary
-([Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)),
+([Endo meeting 2026-05-06][endo-transcript]),
 Cap'n Proto provides **end-to-end reference FIFO** (per sender,
 per logical reference, surviving the one shortening event that
 moves a promise from a 2-hop path to a 1-hop path), *not* full
 E-Order. The `rpc.capnp` "E-Order" *definition*
 ("two calls made on the same reference must be delivered in the
 order which they were made") matches the **Full Order** tier
-(single-reference, two-party) at the top of [`partial-order.html`](http://erights.org/elib/concurrency/partial-order.html)
+(single-reference, two-party) at the top of [`partial-order.html`][erights-partial-order]
 — and the embargo machinery generalizes that property to survive
 promise resolution. The page it cites also defines a stronger
 **Tree Order** tier that adds cross-sender forks, and titles
@@ -498,7 +498,7 @@ expecting forks will be disappointed.
 
 There is a real ordering-related `evalLater()` in Cap'n Proto's
 C++ implementation, at
-[`c++/src/capnp/rpc.c++` line 2803](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/capnp/rpc.c%2B%2B#L2803),
+[`c++/src/capnp/rpc.c++` line 2803][capn-rpc-cpp-2803],
 in the message loop. The TODO comment alongside it describes the
 race it prevents:
 
@@ -515,7 +515,7 @@ race it prevents:
 > — `rpc.c++` comment at the call site
 
 This is `kj::evalLater` from the [KJ async
-library](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/kj/async.h):
+library][capn-kj-async]:
 a deferred continuation that breaks depth-first `PromiseClient`
 resolution into separate event-loop turns so that
 `Return`-then-`Resolve` ordering is preserved at the level of
@@ -533,17 +533,17 @@ Source quotes:
 
 - CapTP session is "two entities exchanging CapTP messages over a
   reliable, in-order OCapN Netlayer channel" —
-  [`draft-specifications/CapTP Specification.md` L59-61](https://github.com/kumavis/ocapn/blob/b0a681d/draft-specifications/CapTP%20Specification.md#L59-L61).
+  [`draft-specifications/CapTP Specification.md` L59-61][ocapn-spec-captp-lines].
 - Netlayer requirements include "Messages should be received in
   the order in which they were sent" —
-  [`draft-specifications/Netlayers.md` L28-34](https://github.com/kumavis/ocapn/blob/b0a681d/draft-specifications/Netlayers.md#L28-L34).
+  [`draft-specifications/Netlayers.md` L28-34][ocapn-spec-netlayers-lines].
 - Implementation guide describes the netlayer as a "bidirectional
   FIFO" —
-  [`implementation-guide/Implementation Guide.md` L43](https://github.com/kumavis/ocapn/blob/b0a681d/implementation-guide/Implementation%20Guide.md#L43).
+  [`implementation-guide/Implementation Guide.md` L43][ocapn-spec-impl-guide-l43].
 
 The spec language reads as if the netlayer's per-pair FIFO is
 sufficient. Per markm thesis §19.2, it is not. The
-[ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11)
+[ocapn/ocapn#11][ocapn-github-11]
 discussion makes the gap explicit:
 
 > "The 'points' I meant are the sending vat (vatA) and the
@@ -554,7 +554,7 @@ discussion makes the gap explicit:
 > tell that you did not code correctly." — erights, ocapn/ocapn#11
 
 The proposed clarification, per markm's contemporary framing
-([Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)),
+([Endo meeting 2026-05-06][endo-transcript]),
 is to upgrade OCapN's ordering guarantee from §1.3
 (per-CapTP-session fail-stop FIFO) to §1.4 (end-to-end
 reference FIFO) — *not* all the way to full §1.5 E-Order, which
@@ -575,14 +575,31 @@ markm now considers too costly to standardize:
 | Mutually defensive | Yes (relies only on per-connection FIFO + existing 3PH security) |
 | Promise shortening | Yes, with explicit per-shortening flush ceremony before the 3PH; preserves end-to-end reference FIFO across shortening |
 
-Ridley's current proposal in
-[ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11). See
-[`notes/issue-11-promise-shortening.md`](./issue-11-promise-shortening.md)
-and the prototype branch `claude/ocapn-op-flush-WNRFV`. Aligned
-with markm's contemporary recommendation in the
-[Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md):
-end-to-end reference FIFO, *without* the WormholeOp-level
-complexity of full E-Order.
+The active direction in [ocapn/ocapn#11][ocapn-github-11] is a
+dedicated CapTP **`op:flush`**, in the same family as E’s
+`whenMoreSettled`—a *flush barrier* that rides the promise chain so
+anything sent earlier on the old path has cleared before the path
+switches—but framed as a wire op instead of user-visible
+meta-messages. In the variant under discussion, **the peer who is
+about to shorten the chain (Bob) initiates**: he asks Alice, by
+addressing her resolver for the pipelined promise, to quiesce. Alice
+replaces that resolver slot with a fresh local promise so new
+application traffic buffers locally, answers with **flush-done**
+once Bob can rely that everything Alice already sent on the long path
+has been received at him, and only then does Bob run the usual
+three-party handoff toward Carol. Buffered sends drain onto the
+shortened path in send order at the destination. That is **end-to-end
+reference FIFO**—one sender, one logical promise, FIFO at the
+settlement vat—without the cross-reference forks that would need
+WormholeOp. The tradeoff is control-plane cost on **every** shortening
+(including when nothing was pipelined) and an extra round trip
+serialized with the handoff, in exchange for the availability win once
+intermediaries can leave the chain.
+
+Prototype: branch `claude/ocapn-op-flush-WNRFV`. The same tier is what
+markm argues OCapN should target in the [Endo meeting
+2026-05-06][endo-transcript]—end-to-end reference FIFO, not full
+E-Order.
 
 ### 2.8 OCapN + `delivered-after` only (work-in-progress)
 
@@ -595,7 +612,7 @@ complexity of full E-Order.
 
 Lowest protocol cost; ships the disagreement out to user code.
 See
-[`notes/issue-11-promise-shortening.md` §10.1, §10.3](./issue-11-promise-shortening.md)
+[`notes/issue-11-promise-shortening.md` §10.1, §10.3][notes-issue-11]
 and the prototype branch `claude/ocapn-deliver-after-WNRFV`.
 
 ### 2.9 Goblins / SwingSet / other reference implementations
@@ -611,7 +628,7 @@ conventions on top.
 
 ### 3.1 What it actually is — markm's modern definition
 
-In the [Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md),
+In the [Endo meeting 2026-05-06][endo-transcript],
 markm clarifies that the original "lost resolution" name is
 historical and somewhat outdated:
 
@@ -655,7 +672,7 @@ Resolution Bug.
 ### 3.2 Historical definition (E implementations, 2003-era)
 
 The original page documenting the bug,
-[erights `passing-rules.html#lost-resolution`](http://erights.org/elib/equality/passing-rules.html#lost-resolution):
+[erights `passing-rules.html#lost-resolution`][erights-passing-rules]:
 
 > "In current implementations of E, a transmitted Far reference
 > to Carol, sent by Alice to Bob, when Alice Bob and Carol reside
@@ -678,7 +695,7 @@ but the underlying race is the same one markm describes above.
 
 Three E semantic requirements pull against each other in the
 3-vat case (from
-[erights `WormholeOp.html#conflict`](http://erights.org/elib/distrib/captp/WormholeOp.html#conflict)):
+[erights `WormholeOp.html#conflict`][erights-wormhole-conflict]):
 
 1. **Partial ordering.** In a Granovetter introduction, the
    forked reference Bob receives must give him access only to
@@ -713,7 +730,7 @@ Bug.
 
 ### 3.4 markm's framing in the Spritely thread
 
-cwebber, in the [cap-talk thread](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ)
+cwebber, in the [cap-talk thread][cap-talk-e-order-examples]
 "Examples of E-Order being useful", says:
 
 > "Prior to the 'Lost Resolution Bug', E-Order appears to be
@@ -726,7 +743,7 @@ cwebber, in the [cap-talk thread](https://groups.google.com/g/cap-talk/c/R5kc06X
 > must be programmed around or be understood not to be exactly
 > what we thought." — cwebber
 
-markm responds in [Spritely "Conundrum: Message Ordering" #9](https://community.spritely.institute/t/conundrum-message-ordering/28/9):
+markm responds in [Spritely "Conundrum: Message Ordering" #9][spritely-message-ordering-9]:
 
 > "This is indeed one of the considerations leading me to
 > retreat to Tyler's Waterken point-to-point fifo." — markm
@@ -739,11 +756,11 @@ is the more pragmatic target.
 
 | Name | Source | Specific scenario |
 |---|---|---|
-| Lost Resolution Bug | [erights `passing-rules.html`](http://erights.org/elib/equality/passing-rules.html#lost-resolution) | Far→Promise downgrade when a Carol-ref is sent through Bob; hashtables-with-Carol-key fail to unserialize |
-| WormholeOp / "the conflict" | [erights `WormholeOp.html`](http://erights.org/elib/distrib/captp/WormholeOp.html) | The 3-vat conflict between Partial Ordering, Going Home, and Preserve Passability |
-| Tribble 4-way race | [Cap'n Proto `rpc.capnp`](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/capnp/rpc.capnp) | Promise resolution across 4 parties — chained shortenings |
-| Midori four-vat promise shortening | dtribble in [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11) (= Tribble 4-way) | Same as above |
-| Auxiliary Data Problem | markm in [Spritely #9](https://community.spritely.institute/t/conundrum-message-ordering/28/9); [agoric-sdk#6355](https://github.com/Agoric/agoric-sdk/pull/6355) | Agoric-internal name for related distributed-data races |
+| Lost Resolution Bug | [erights `passing-rules.html`][erights-passing-rules] | Far→Promise downgrade when a Carol-ref is sent through Bob; hashtables-with-Carol-key fail to unserialize |
+| WormholeOp / "the conflict" | [erights `WormholeOp.html`][erights-wormhole] | The 3-vat conflict between Partial Ordering, Going Home, and Preserve Passability |
+| Tribble 4-way race | [Cap'n Proto `rpc.capnp`][capn-rpc-capnp] | Promise resolution across 4 parties — chained shortenings |
+| Midori four-vat promise shortening | dtribble in [ocapn/ocapn#11][ocapn-github-11] (= Tribble 4-way) | Same as above |
+| Auxiliary Data Problem | markm in [Spritely #9][spritely-message-ordering-9]; [agoric-sdk#6355][agoric-sdk-6355] | Agoric-internal name for related distributed-data races |
 
 These are related but distinct. The Lost Resolution Bug is
 specifically about *resolved-ness* preservation when an
@@ -762,13 +779,13 @@ fixes.
   forward-strictly-to-R rule for Tribble's 4-way race, which is a
   related but separate issue.
 - **OCapN** uses a pipelined version of the
-  [erights `provideFor` / `acceptFrom` protocol](http://erights.org/elib/distrib/captp/provideFor.html)
+  [erights `provideFor` / `acceptFrom` protocol][erights-provideFor]
   for Granovetter introductions, exposed on the OCapN
-  [bootstrap object](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#bootstrap-object)
+  [bootstrap object][ocapn-captp-bootstrap]
   as the
-  [`deposit-gift`](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#deposit-gift-method)
+  [`deposit-gift`][ocapn-captp-deposit-gift]
   and
-  [`withdraw-gift`](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#withdraw-gift-method)
+  [`withdraw-gift`][ocapn-captp-withdraw-gift]
   methods (corresponding to E's `provideFor` and `acceptFrom`,
   respectively), but without WormholeOp. Because OCapN does not
   currently specify hashtable-passability the same way E does,
@@ -797,7 +814,7 @@ fixes.
 
 ### 4.1 What it actually is
 
-Per the canonical [erights `WormholeOp.html`](http://erights.org/elib/distrib/captp/WormholeOp.html),
+Per the canonical [erights `WormholeOp.html`][erights-wormhole],
 WormholeOp is a way for VatA to **tunnel her unacknowledged A↔C
 VatTP traffic through VatB** so that VatB cannot deliver any
 message that depends on VatC's state until VatC has already
@@ -903,14 +920,14 @@ the destination.
   race (Tribble 4-way) it uses Embargo / Disembargo +
   forward-strictly-to-R, which is a different design.
 - **OCapN** uses a pipelined version of the
-  [erights `provideFor.html`](http://erights.org/elib/distrib/captp/provideFor.html)
+  [erights `provideFor.html`][erights-provideFor]
   protocol, exposed on the OCapN
-  [bootstrap object](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#bootstrap-object)
+  [bootstrap object][ocapn-captp-bootstrap]
   as the
-  [`deposit-gift`](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#deposit-gift-method)
+  [`deposit-gift`][ocapn-captp-deposit-gift]
   method (E's `provideFor`) which registers the gift at C, and
   the
-  [`withdraw-gift`](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#withdraw-gift-method)
+  [`withdraw-gift`][ocapn-captp-withdraw-gift]
   method (E's `acceptFrom`) — if `withdraw-gift` arrives at C
   before the matching `deposit-gift`, it queues at C until
   `deposit-gift` resolves it (so ordering is correct in the
@@ -922,7 +939,7 @@ the destination.
   as one reason to retreat from end-to-end E-Order to
   point-to-point FIFO with user-level affordances. The cost of
   WormholeOp specifically is named in the [Endo meeting
-  2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)
+  2026-05-06][endo-transcript]
   ("having to standardize some form of **wormhole op**, flipped
   the cost–benefit for me") rather than in #9.
 
@@ -932,68 +949,68 @@ the destination.
 
 ### OCapN (this repo)
 
-- [`draft-specifications/CapTP Specification.md`](https://github.com/kumavis/ocapn/blob/b0a681d/draft-specifications/CapTP%20Specification.md)
-- [`draft-specifications/Netlayers.md`](https://github.com/kumavis/ocapn/blob/b0a681d/draft-specifications/Netlayers.md)
-- [`implementation-guide/Implementation Guide.md`](https://github.com/kumavis/ocapn/blob/b0a681d/implementation-guide/Implementation%20Guide.md)
+- [`draft-specifications/CapTP Specification.md`][ocapn-spec-captp]
+- [`draft-specifications/Netlayers.md`][ocapn-spec-netlayers]
+- [`implementation-guide/Implementation Guide.md`][ocapn-spec-impl-guide]
 
 ### E and CapTP-of-E
 
 - **Mark S. Miller, *Robust Composition: Towards a Unified
   Approach to Access Control and Concurrency Control*, Johns
-  Hopkins PhD thesis, May 2006** — local mirror by chapter under
-  [`notes/references/markm-thesis/`](./references/markm-thesis/).
+  Hopkins PhD thesis, May 2006** —
+  [PDF on erights.org][markm-thesis].
   Authoritative for E-Order. Especially:
-  - [Chapter 19 — Delivering Messages in E-Order](./references/markm-thesis/chapter-19-delivering-messages-in-e-order.md)
+  - [Chapter 19 — Delivering Messages in E-Order][markm-thesis-ch19]
     (§19.1 fail-stop FIFO; §19.2 "FIFO is Too Weak"; §19.3
     forks; §19.4 "CAUSAL Order is Too Strong"; §19.5 joins;
     §19.6 fairness; §19.7 comparison to TCP / CAUSAL / AGREED)
-  - [Chapter 16 — Promise Pipelining](./references/markm-thesis/chapter-16-promise-pipelining.md)
-  - [Chapter 17 — Partial Failure](./references/markm-thesis/chapter-17-partial-failure.md)
+  - [Chapter 16 — Promise Pipelining][markm-thesis-ch16]
+  - [Chapter 17 — Partial Failure][markm-thesis-ch17]
     (`whenMoreResolved`)
-  - [Chapter 18 — The when-catch Expression](./references/markm-thesis/chapter-18-the-when-catch-expression.md)
-- [erights.org: Partially-Ordered Message Delivery](http://erights.org/elib/concurrency/partial-order.html) — Full / Tree / Partial Order tiers
-- [erights.org: Four Party Partial Order](http://erights.org/elib/equality/after-both.html) — joins via `E.join`
-- [erights.org: WormholeOp](http://erights.org/elib/distrib/captp/WormholeOp.html) — verbatim wire shape, "the conflict solved by WormholeOp," all four solution candidates
-- [erights.org: passing-rules.html#lost-resolution](http://erights.org/elib/equality/passing-rules.html#lost-resolution) — **the authoritative Lost Resolution Bug definition**
-- [erights.org: provideFor](http://erights.org/elib/distrib/captp/provideFor.html) — gift-table 3PH protocol; queue-on-acceptFrom-arrives-first behavior
-- [erights.org: acceptFrom](http://erights.org/elib/distrib/captp/acceptFrom.html)
-- [erights.org: DeliverOp](http://erights.org/elib/distrib/captp/DeliverOp.html) — `whenMoreResolved` animation referenced by markm in ocapn/ocapn#11
-- [erights.org: Eventual Send Expression](http://erights.org/elang/kernel/SendExpr.html)
-- [erights.org: CapTP — index](http://erights.org/elib/distrib/captp/index.html)
-- [erights.org: CapTP — The 4 Tables](http://erights.org/elib/distrib/captp/4tables.html)
+  - [Chapter 18 — The when-catch Expression][markm-thesis-ch18]
+- [erights.org: Partially-Ordered Message Delivery][erights-partial-order] — Full / Tree / Partial Order tiers
+- [erights.org: Four Party Partial Order][erights-after-both] — joins via `E.join`
+- [erights.org: WormholeOp][erights-wormhole] — verbatim wire shape, "the conflict solved by WormholeOp," all four solution candidates
+- [erights.org: passing-rules.html#lost-resolution][erights-passing-rules] — **the authoritative Lost Resolution Bug definition**
+- [erights.org: provideFor][erights-provideFor] — gift-table 3PH protocol; queue-on-acceptFrom-arrives-first behavior
+- [erights.org: acceptFrom][erights-acceptFrom]
+- [erights.org: DeliverOp][erights-deliverOp] — `whenMoreResolved` animation referenced by markm in ocapn/ocapn#11
+- [erights.org: Eventual Send Expression][erights-sendExpr]
+- [erights.org: CapTP — index][erights-captp-index]
+- [erights.org: CapTP — The 4 Tables][erights-captp-4tables]
 
 The whole erights.org website source is open; clone
-[`erights/erights-org-website`](https://github.com/erights/erights-org-website)
+[`erights/erights-org-website`][github-erights-org-website]
 for offline reading.
 
 ### Cap'n Proto
 
-- [Cap'n Proto: RPC Protocol](https://capnproto.org/rpc.html)
-- [`capnproto/c++/src/capnp/rpc.capnp`](https://github.com/capnproto/capnproto/blob/master/c++/src/capnp/rpc.capnp) — Embargo, Disembargo, Tribble 4-way race comments
-- [`capnproto/c++/src/capnp/rpc.c++`](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/capnp/rpc.c%2B%2B) — embargo enforcement
-- [Promise Pipelining in Cap'n Proto RPC — Lobsters discussion](https://lobste.rs/s/0ykbk6/promise_pipelining_cap_n_proto_rpc)
+- [Cap'n Proto: RPC Protocol][capn-doc-rpc]
+- [`capnproto/c++/src/capnp/rpc.capnp`][capn-rpc-capnp] — Embargo, Disembargo, Tribble 4-way race comments
+- [`capnproto/c++/src/capnp/rpc.c++`][capn-rpc-cpp] — embargo enforcement
+- [Promise Pipelining in Cap'n Proto RPC — Lobsters discussion][lobsters-capn-pipelining]
 
 ### The Lost Resolution Bug
 
-- [agoric-sdk#40: deny passing Presences in arguments?](https://github.com/Agoric/agoric-sdk/issues/40)
-- [agoric-sdk#6355: cheap auxdata](https://github.com/Agoric/agoric-sdk/pull/6355) (markm's "Auxiliary Data Problem" approximation)
-- [PlaygroundVat — limitations.md](https://github.com/agoric-labs/PlaygroundVat/blob/master/docs/limitations.md)
-- [cap-talk: Goblin semantics, and thinking through / planning for CapTP](https://groups.google.com/g/cap-talk/c/xWv2-J62g-I)
-- [cap-talk: Examples of E-Order being useful (cwebber)](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ) — origin of the `carol~.x()` / `bob~.y(carol)` / `carol~.z()` example
+- [agoric-sdk#40: deny passing Presences in arguments?][agoric-sdk-40]
+- [agoric-sdk#6355: cheap auxdata][agoric-sdk-6355] (markm's "Auxiliary Data Problem" approximation)
+- [PlaygroundVat — limitations.md][playground-vat-limitations]
+- [cap-talk: Goblin semantics, and thinking through / planning for CapTP][cap-talk-goblins-captp]
+- [cap-talk: Examples of E-Order being useful (cwebber)][cap-talk-e-order-examples] — origin of the `carol~.x()` / `bob~.y(carol)` / `carol~.z()` example
 
 ### Mark Miller's contemporary view
 
-- **[Endo meeting 2026-05-06 — message ordering](./references/Endo%20Meeting%2020260506%20transcript.md)** (edited transcript) — markm clarifies that "point-to-point FIFO" was a poorly-chosen term for what he meant; the correct framing is **end-to-end reference FIFO** (markm phrases it variously as "end-to-end FIFO per reference"). Also: don't standardize full E-Order, the modern Lost Resolution Bug definition, and why promise shortening is required for availability.
-- [Spritely Conundrum: Message Ordering #8 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/8)
-- [Spritely Conundrum: Message Ordering #9 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/9)
-- [Spritely Conundrum: Message Ordering — thread index](https://community.spritely.institute/t/conundrum-message-ordering/28)
+- **[Endo meeting 2026-05-06 — message ordering][endo-transcript]** (edited transcript) — markm clarifies that "point-to-point FIFO" was a poorly-chosen term for what he meant; the correct framing is **end-to-end reference FIFO** (markm phrases it variously as "end-to-end FIFO per reference"). Also: don't standardize full E-Order, the modern Lost Resolution Bug definition, and why promise shortening is required for availability.
+- [Spritely Conundrum: Message Ordering #8 (markm)][spritely-message-ordering-8]
+- [Spritely Conundrum: Message Ordering #9 (markm)][spritely-message-ordering-9]
+- [Spritely Conundrum: Message Ordering — thread index][spritely-message-ordering-thread]
 
 ### Related ocapn issues
 
-- [ocapn/ocapn#15](https://github.com/ocapn/ocapn/issues/15) — "Replacing deliver.rdr with op:listen?"
-- [ocapn/ocapn#24](https://github.com/ocapn/ocapn/issues/24) — referenced by zarutian in the wire-trace example
-- [ocapn/ocapn#236](https://github.com/ocapn/ocapn/issues/236) — original promise-shortening discussion before #11
-- [ocapn/ocapn#265](https://github.com/ocapn/ocapn/issues/265) — Two Generals concern in 3PH
+- [ocapn/ocapn#15][ocapn-github-15] — "Replacing deliver.rdr with op:listen?"
+- [ocapn/ocapn#24][ocapn-github-24] — referenced by zarutian in the wire-trace example
+- [ocapn/ocapn#236][ocapn-github-236] — original promise-shortening discussion before #11
+- [ocapn/ocapn#265][ocapn-github-265] — Two Generals concern in 3PH
 
 ---
 
@@ -1035,8 +1052,7 @@ B redeems it.
 **4 Tables (CapTP).** The per-connection state in CapTP-of-E:
 Questions, Answers, Imports, Exports.
 
-**Hasse diagram.** The visualization markm uses (thesis Figure
-19.1) for E-Order constraints. References as arrows; messages
+**Hasse diagram.** The visualization markm uses ([thesis Figure 19.1][markm-thesis-figure-19-1]) for E-Order constraints. References as arrows; messages
 between the source-and-arrowhead points; forks where references
 get sent as arguments.
 
@@ -1085,7 +1101,7 @@ forever.
 **Tribble 4-way race.** Named for Dean Tribble. A race in which
 a remote promise P1 resolves to another remote promise P2 which
 simultaneously resolves to a fourth-vat object Q. dtribble in
-[ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11)
+[ocapn/ocapn#11][ocapn-github-11]
 confirms this is the same as "the Midori four vat promise
 shortening case."
 
@@ -1107,7 +1123,7 @@ WormholeOp.
 
 **Auxiliary Data Problem.** Agoric-internal name for related
 distributed-data races; markm's "cheap auxdata" approximation
-PR is [agoric-sdk#6355](https://github.com/Agoric/agoric-sdk/pull/6355).
+PR is [agoric-sdk#6355][agoric-sdk-6355].
 
 **Promise shortening.** A protocol-level optimization. Initially
 Alice's promise `p1` (held in vatA) routes through vatB; once B
@@ -1129,7 +1145,7 @@ full E-Order (§1.5)** — does not enforce the cross-sender forks
 constraint (Bob's Y must arrive after Alice's X when the
 reference was forwarded). Markm's contemporary recommendation
 for OCapN
-([Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)).
+([Endo meeting 2026-05-06][endo-transcript]).
 
 **Causal order.** The general distributed-systems property: if
 message m₁ causally precedes m₂ (e.g., the sender of m₂ had
@@ -1139,3 +1155,56 @@ End-to-end reference FIFO is one specific slice of causal order —
 the slice along a single logical reference from a single sender.
 Markm thesis §19.4 explicitly rejects full causal order as a
 target for distributed ocap.
+
+<!-- Link references -->
+
+[notes-issue-11]: ./issue-11-promise-shortening.md
+
+[agoric-sdk-40]: https://github.com/Agoric/agoric-sdk/issues/40
+[agoric-sdk-6355]: https://github.com/Agoric/agoric-sdk/pull/6355
+[cap-talk-e-order-examples]: https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ
+[cap-talk-goblins-captp]: https://groups.google.com/g/cap-talk/c/xWv2-J62g-I
+[capn-doc-rpc]: https://capnproto.org/rpc.html
+[capn-kj-async]: https://github.com/capnproto/capnproto/blob/09a8406f1f26ea7fc49ca72c77987ee28fda0620/c%2B%2B/src/kj/async.h
+[capn-rpc-capnp]: https://github.com/capnproto/capnproto/blob/09a8406f1f26ea7fc49ca72c77987ee28fda0620/c%2B%2B/src/capnp/rpc.capnp
+[capn-rpc-capnp-l61]: https://github.com/capnproto/capnproto/blob/09a8406f1f26ea7fc49ca72c77987ee28fda0620/c%2B%2B/src/capnp/rpc.capnp#L61-L65
+[capn-rpc-cpp]: https://github.com/capnproto/capnproto/blob/09a8406f1f26ea7fc49ca72c77987ee28fda0620/c%2B%2B/src/capnp/rpc.c%2B%2B
+[capn-rpc-cpp-2803]: https://github.com/capnproto/capnproto/blob/09a8406f1f26ea7fc49ca72c77987ee28fda0620/c%2B%2B/src/capnp/rpc.c%2B%2B#L2803
+[endo-transcript]: ./references/Endo%20Meeting%2020260506%20transcript.md
+[erights-acceptFrom]: http://erights.org/elib/distrib/captp/acceptFrom.html
+[erights-after-both]: http://erights.org/elib/equality/after-both.html
+[erights-captp-4tables]: http://erights.org/elib/distrib/captp/4tables.html
+[erights-captp-index]: http://erights.org/elib/distrib/captp/index.html
+[erights-deliverOp]: http://erights.org/elib/distrib/captp/DeliverOp.html
+[erights-partial-order]: http://erights.org/elib/concurrency/partial-order.html
+[erights-passing-rules]: http://erights.org/elib/equality/passing-rules.html#lost-resolution
+[erights-provideFor]: http://erights.org/elib/distrib/captp/provideFor.html
+[erights-sendExpr]: http://erights.org/elang/kernel/SendExpr.html
+[erights-wormhole]: http://erights.org/elib/distrib/captp/WormholeOp.html
+[erights-wormhole-conflict]: http://erights.org/elib/distrib/captp/WormholeOp.html#conflict
+[github-erights-org-website]: https://github.com/erights/erights-org-website
+[lobsters-capn-pipelining]: https://lobste.rs/s/0ykbk6/promise_pipelining_cap_n_proto_rpc
+[markm-thesis]: http://www.erights.org/talks/thesis/markm-thesis.pdf
+[markm-thesis-ch16]: http://www.erights.org/talks/thesis/markm-thesis.pdf#chapter.16
+[markm-thesis-ch17]: http://www.erights.org/talks/thesis/markm-thesis.pdf#chapter.17
+[markm-thesis-ch18]: http://www.erights.org/talks/thesis/markm-thesis.pdf#chapter.18
+[markm-thesis-ch19]: http://www.erights.org/talks/thesis/markm-thesis.pdf#chapter.19
+[markm-thesis-figure-19-1]: http://www.erights.org/talks/thesis/markm-thesis.pdf#page=156
+[ocapn-github-11]: https://github.com/ocapn/ocapn/issues/11
+[ocapn-github-15]: https://github.com/ocapn/ocapn/issues/15
+[ocapn-github-24]: https://github.com/ocapn/ocapn/issues/24
+[ocapn-github-236]: https://github.com/ocapn/ocapn/issues/236
+[ocapn-github-265]: https://github.com/ocapn/ocapn/issues/265
+[ocapn-captp-bootstrap]: https://github.com/ocapn/ocapn/blob/b4dbd1a39f8b3de7f170d10890c423afbd2c0373/draft-specifications/CapTP%20Specification.md#bootstrap-object
+[ocapn-captp-deposit-gift]: https://github.com/ocapn/ocapn/blob/b4dbd1a39f8b3de7f170d10890c423afbd2c0373/draft-specifications/CapTP%20Specification.md#deposit-gift-method
+[ocapn-captp-withdraw-gift]: https://github.com/ocapn/ocapn/blob/b4dbd1a39f8b3de7f170d10890c423afbd2c0373/draft-specifications/CapTP%20Specification.md#withdraw-gift-method
+[ocapn-spec-captp]: https://github.com/ocapn/ocapn/blob/b4dbd1a39f8b3de7f170d10890c423afbd2c0373/draft-specifications/CapTP%20Specification.md
+[ocapn-spec-captp-lines]: https://github.com/ocapn/ocapn/blob/b4dbd1a39f8b3de7f170d10890c423afbd2c0373/draft-specifications/CapTP%20Specification.md#L59-L61
+[ocapn-spec-impl-guide]: https://github.com/ocapn/ocapn/blob/b4dbd1a39f8b3de7f170d10890c423afbd2c0373/implementation-guide/Implementation%20Guide.md
+[ocapn-spec-impl-guide-l43]: https://github.com/ocapn/ocapn/blob/b4dbd1a39f8b3de7f170d10890c423afbd2c0373/implementation-guide/Implementation%20Guide.md#L43
+[ocapn-spec-netlayers]: https://github.com/ocapn/ocapn/blob/b4dbd1a39f8b3de7f170d10890c423afbd2c0373/draft-specifications/Netlayers.md
+[ocapn-spec-netlayers-lines]: https://github.com/ocapn/ocapn/blob/b4dbd1a39f8b3de7f170d10890c423afbd2c0373/draft-specifications/Netlayers.md#L28-L34
+[playground-vat-limitations]: https://github.com/agoric-labs/PlaygroundVat/blob/b31c11924a815dd4a8c20c5810c919cf1adb4e96/docs/limitations.md
+[spritely-message-ordering-8]: https://community.spritely.institute/t/conundrum-message-ordering/28/8
+[spritely-message-ordering-9]: https://community.spritely.institute/t/conundrum-message-ordering/28/9
+[spritely-message-ordering-thread]: https://community.spritely.institute/t/conundrum-message-ordering/28
