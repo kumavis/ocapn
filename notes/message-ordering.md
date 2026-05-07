@@ -4,24 +4,14 @@ Research notes on how the E-family of capability-secure protocols
 defines message-delivery ordering, where each protocol diverges,
 and how the *Lost Resolution Bug* and *WormholeOp* fit in.
 
-Primary mirrors for the Spritely thread, Cap'n Proto `rpc.capnp`,
-cap-talk, selected `ocapn/ocapn` issues, and Mark Miller's thesis
-(*Robust Composition*, JHU 2006) live under `notes/references/`
-(see [`notes/references/README.md`](./references/README.md)).
-**erights.org** pages are not mirrored here — clone
-[`erights/erights-org-website`](https://github.com/erights/erights-org-website)
-for offline access.
+Contents:
 
-Reading order:
-- §1 introduces the **types of ordering guarantee** with the
-  protocols where each is seen.
-- §2 walks through specific **protocols** and pins down what each
-  one actually delivers, including whether the guarantee survives
-  the network, mutually defensive parties, and promise shortening.
-- §3 and §4 are case studies of two named bugs in the design space
-  — the **Lost Resolution Bug** and **WormholeOp**.
-- §5 is sources.
-- §6 is a glossary for terms used throughout.
+1. [Types of ordering guarantees](#1-types-of-ordering-guarantees)
+2. [Protocols](#2-protocols)
+3. [The Lost Resolution Bug](#3-the-lost-resolution-bug)
+4. [WormholeOp](#4-wormholeop)
+5. [Sources](#5-sources)
+6. [Glossary](#6-glossary)
 
 ---
 
@@ -94,7 +84,7 @@ in the current draft (between two CapTP-session peers).
 ### 1.4 End-to-end reference FIFO (per-sender, per-logical-reference)
 
 Stronger than fail-stop FIFO between two CapTP-session peers,
-weaker than full E-ORDER. **Per-sender, per-logical-reference**
+weaker than full E-Order. **Per-sender, per-logical-reference**
 FIFO that survives promise resolution / shortening: messages
 sent by a single vat on what the application sees as the same
 reference are delivered in send order at the eventual target,
@@ -156,7 +146,7 @@ then `foo()` and `bar()` may be delivered to Carol in either
 order. The FIFO guarantee binds messages sent on `p` to each
 other, and messages sent on `c` to each other, but not the two
 streams to one another. Cross-reference ordering would only be
-enforced by full E-ORDER (§1.5), which markm now recommends
+enforced by full E-Order (§1.5), which markm now recommends
 *against* standardizing for cost reasons.
 
 #### Promise shortening requires additional synchronization
@@ -224,9 +214,9 @@ race that motivated [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11):
 the application sees one promise, the protocol sees two paths,
 and ordering breaks at the path switchover.
 
-#### Strictly weaker than full E-ORDER
+#### Strictly weaker than full E-Order
 
-This is **strictly weaker** than full E-ORDER (§1.5). It does
+This is **strictly weaker** than full E-Order (§1.5). It does
 *not* enforce the cross-sender forks constraint:
 
 > "Suppose Alice first sends **X** to Carol, then sends **W** to
@@ -243,7 +233,7 @@ This is **strictly weaker** than full E-ORDER (§1.5). It does
   this tier (see §2.5 below for the discrepancy).
 - **Ridley's `op:flush` proposal** for OCapN — does not
   implement WormholeOp, so does not provide the forks property
-  of full E-ORDER. The flush dance handles the single-sender
+  of full E-Order. The flush dance handles the single-sender
   promise-resolution case, which is exactly this tier.
 - **Per-promise sequence numbers** alternative — also targets
   this tier (intrinsic per-message ordering).
@@ -253,12 +243,12 @@ This is **strictly weaker** than full E-ORDER (§1.5). It does
 
 The cost difference is significant: end-to-end reference FIFO
 needs only path-switchover serialization (Cap'n Proto's
-Disembargo, Ridley's flush, or per-promise seq). Full E-ORDER
+Disembargo, Ridley's flush, or per-promise seq). Full E-Order
 needs cross-sender forks ordering, which on the network requires
 something like WormholeOp — and that complexity is what motivated
 the retreat.
 
-### 1.5 E-ORDER (Tree Order with forks)
+### 1.5 E-Order (Tree Order with forks)
 
 All of fail-stop FIFO, plus: when a reference is included as an
 argument of an eventually-sent message, the reference is **forked** at a position
@@ -300,9 +290,9 @@ recommends *not* standardizing this tier for OCapN
 to "end-to-end FIFO per reference" — see §1.4. The two phrasings
 refer to the same target tier.)
 
-### 1.6 E-ORDER with joins (Partial Order)
+### 1.6 E-Order with joins (Partial Order)
 
-E-ORDER plus joins: `E.join(a, b)` returns a promise whose
+E-Order plus joins: `E.join(a, b)` returns a promise whose
 ordering constraints are the joins of the orders of `a` and `b`.
 A message on the joined promise is delivered only after every
 prior send on either input. This is what's needed for grant
@@ -314,7 +304,7 @@ systems.
 
 ### 1.7 CAUSAL order
 
-All of E-ORDER, plus full happens-before across all senders,
+All of E-Order, plus full happens-before across all senders,
 references, and forwarding paths. If the *send event* of m₁
 happens before the *send event* of m₂ in any actor's local
 ordering, then if both are delivered, the *delivery* of m₁
@@ -333,7 +323,7 @@ distributed ocap:
 > present possibility. In the absence of mutually-reliant
 > hardware, this seems difficult.
 >
-> By contrast, E-ORDER only requires restricting the new
+> By contrast, E-Order only requires restricting the new
 > possibilities the newly arriving reference-to-Carol provides
 > to VatB, rather than the removal of previously present
 > possibilities." — markm thesis §19.4
@@ -396,12 +386,12 @@ Waterken does not.
 
 | | |
 |---|---|
-| Ordering | §1.5 + §1.6 E-ORDER with joins |
+| Ordering | §1.5 + §1.6 E-Order with joins |
 | Cross-network | No — single vat |
 | Mutually defensive | Not relevant within a vat |
 | Promise shortening | Trivial (everything is local) |
 
-The original definition of E-ORDER. Per markm thesis §19.1,
+The original definition of E-Order. Per markm thesis §19.1,
 intra-vat references provide fail-stop FIFO; per §19.3, sending a
 reference as an argument forks it and the resulting Tree Order is
 visualizable as a Hasse diagram.
@@ -410,7 +400,7 @@ visualizable as a Hasse diagram.
 
 | | |
 |---|---|
-| Ordering | §1.5 E-ORDER aspirational; in 2003-era E implementations (per `passing-rules.html`) the Lost Resolution Bug means a Far reference is downgraded to a Promise on 3-vat introduction |
+| Ordering | §1.5 E-Order aspirational; in 2003-era E implementations (per `passing-rules.html`) the Lost Resolution Bug means a Far reference is downgraded to a Promise on 3-vat introduction |
 | Cross-network | Yes (VatTP) |
 | Mutually defensive | Yes by design — VatTP encrypts; introductions are cryptographic handoffs |
 | Promise shortening | Yes via redirector + `whenMoreResolved` + WormholeOp; **WormholeOp is "Not yet implemented" per the canonical erights.org page**, which is why Lost Resolution exists |
@@ -425,15 +415,14 @@ remaining piece that — when implemented — would close the
 
 | | |
 |---|---|
-| Ordering | §1.4 end-to-end reference FIFO, enforced. **Note: `rpc.capnp` uses the term "E-Order" — that term ambiguously names two tiers on the page it cites; Cap'n Proto delivers the weaker (single-reference) one, not the §1.5 E-ORDER tier with cross-sender forks** — see below. |
+| Ordering | §1.4 end-to-end reference FIFO, enforced. **Note: `rpc.capnp` uses the term "E-Order" — that term ambiguously names two tiers on the page it cites; Cap'n Proto delivers the weaker (single-reference) one, not the §1.5 E-Order tier with cross-sender forks** — see below. |
 | Cross-network | Yes |
 | Mutually defensive | Yes (security model inherited from CapTP-of-E) |
 | Promise shortening | Yes, *only* shortening from a 2-hop path to a 1-hop path. Multi-hop chains are pinned via the **forward-strictly-to-R** rule (line 746-754 of `rpc.capnp`) to avoid the Tribble 4-way race. Path switchover is serialized by Embargo / Disembargo. Trades long-term availability (R can never go offline without breaking the chain) for protocol simplicity. |
 
 #### What `rpc.capnp` claims
 
-From `rpc.capnp` lines 61-65 (local mirror
-[`notes/references/capnproto-rpc.capnp`](./references/capnproto-rpc.capnp)):
+From [`rpc.capnp` lines 61-65](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/capnp/rpc.capnp#L61-L65):
 
 > "Unless otherwise specified, messages must be delivered to the
 > receiving application in the same order in which they were
@@ -443,7 +432,7 @@ From `rpc.capnp` lines 61-65 (local mirror
 > http://erights.org/elib/concurrency/partial-order.html"
 
 This citation is misleading. The page it links — erights
-`partial-order.html` — defines E-ORDER as **fail-stop FIFO with
+`partial-order.html` — defines E-Order as **fail-stop FIFO with
 forks** (Tree Order). The definition Cap'n Proto gives
 ("two calls on the same reference") is only the per-reference
 FIFO part — the §1.4 tier in this document, not the §1.5 tier.
@@ -480,7 +469,7 @@ is the §1.4 tier: end-to-end reference FIFO, per sender.
 - The cross-sender forks case. If Alice sends X to Carol, then
   sends Carol's reference to Bob, and Bob then sends Y to Carol,
   Cap'n Proto does **not** guarantee Y arrives at Carol after X.
-  Full §1.5 E-ORDER would require this; WormholeOp would be the
+  Full §1.5 E-Order would require this; WormholeOp would be the
   mechanism. Cap'n Proto explicitly does not implement WormholeOp.
 - Multi-hop chain shortening (Tribble 4-way race). The
   forward-strictly-to-R rule sidesteps this by *giving up* on
@@ -498,7 +487,7 @@ So in markm's contemporary vocabulary
 Cap'n Proto provides **end-to-end reference FIFO** (per sender,
 per logical reference, surviving the one shortening event that
 moves a promise from a 2-hop path to a 1-hop path), *not* full
-E-ORDER. The `rpc.capnp` "E-Order" *definition*
+E-Order. The `rpc.capnp` "E-Order" *definition*
 ("two calls made on the same reference must be delivered in the
 order which they were made") matches the **Full Order** tier
 (single-reference, two-party) at the top of [`partial-order.html`](http://erights.org/elib/concurrency/partial-order.html)
@@ -508,7 +497,7 @@ promise resolution. The page it cites also defines a stronger
 itself *Partially-Ordered Message Delivery* (forks + joins).
 Cap'n Proto's text picks the narrowest tier from the page and
 the implementation matches it; what's potentially confusing is
-that the same name "E-Order" / "E-ORDER" is used at both
+that the same name "E-Order" / "E-Order" is used at both
 granularities in the literature. A reader who follows the link
 expecting forks will be disappointed.
 
@@ -575,7 +564,7 @@ The proposed clarification, per markm's contemporary framing
 ([Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)),
 is to upgrade OCapN's ordering guarantee from §1.3
 (per-CapTP-session fail-stop FIFO) to §1.4 (end-to-end
-reference FIFO) — *not* all the way to full §1.5 E-ORDER, which
+reference FIFO) — *not* all the way to full §1.5 E-Order, which
 markm now considers too costly to standardize:
 
 > "Don't standardize e-ordering—it's too hard. Back off to […]
@@ -588,7 +577,7 @@ markm now considers too costly to standardize:
 
 | | |
 |---|---|
-| Ordering | §1.4 end-to-end reference FIFO (per sender, surviving shortening). **Not full §1.5 E-ORDER** — does not implement WormholeOp, so does not enforce the cross-sender forks property. |
+| Ordering | §1.4 end-to-end reference FIFO (per sender, surviving shortening). **Not full §1.5 E-Order** — does not implement WormholeOp, so does not enforce the cross-sender forks property. |
 | Cross-network | Yes |
 | Mutually defensive | Yes (relies only on per-connection FIFO + existing 3PH security) |
 | Promise shortening | Yes, with explicit per-shortening flush ceremony before the 3PH; preserves end-to-end reference FIFO across shortening |
@@ -600,13 +589,13 @@ and the prototype branch `claude/ocapn-op-flush-WNRFV`. Aligned
 with markm's contemporary recommendation in the
 [Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md):
 end-to-end reference FIFO, *without* the WormholeOp-level
-complexity of full E-ORDER.
+complexity of full E-Order.
 
-### 2.8 OCapN + per-promise sequence numbers (alternative proposal)
+### 2.8 OCapN + per-promise sequence numbers (work-in-progress)
 
 | | |
 |---|---|
-| Ordering | §1.4 end-to-end reference FIFO (intrinsic, per sender). Does not enforce the cross-sender forks property of full §1.5 E-ORDER. |
+| Ordering | §1.4 end-to-end reference FIFO (intrinsic, per sender). Does not enforce the cross-sender forks property of full §1.5 E-Order. |
 | Cross-network | Yes |
 | Mutually defensive | Yes |
 | Promise shortening | Yes, transparent — sender tags pipelined messages with seq, destination reorders |
@@ -616,7 +605,7 @@ Alternative explored in
 Trades a per-message varint for the per-event flush ceremony;
 makes shortening fully transparent.
 
-### 2.9 OCapN + `delivered-after` only (minimal hybrid proposal)
+### 2.9 OCapN + `delivered-after` only (work-in-progress)
 
 | | |
 |---|---|
@@ -670,17 +659,17 @@ The modern statement of the issue:
 > — markm, Endo meeting
 
 So the "Lost Resolution Bug" is now best understood as a name
-for the **cross-sender forks requirement** of full E-ORDER
+for the **cross-sender forks requirement** of full E-Order
 (§1.5) — the requirement that Bob's send Y on a forwarded
 reference must follow Alice's prior send X on the same logical
 reference. This is exactly the constraint that distinguishes
-full E-ORDER from end-to-end reference FIFO (§1.4), and it is
+full E-Order from end-to-end reference FIFO (§1.4), and it is
 exactly what WormholeOp is designed to provide.
 
 In Cap'n Proto terms: nothing in the embargo machinery enforces
 this (§2.5). In OCapN-with-`op:flush` terms: the flush ceremony
 also does not enforce this. Both protocols therefore deliver
-end-to-end reference FIFO but not full E-ORDER, and the unhandled
+end-to-end reference FIFO but not full E-Order, and the unhandled
 cross-sender forks case is the modern face of the Lost
 Resolution Bug.
 
@@ -745,62 +734,44 @@ Bug.
 
 ### 3.4 markm's framing in the Spritely thread
 
-In [Spritely "Conundrum: Message Ordering" post #9](https://community.spritely.institute/t/conundrum-message-ordering/28/9)
-(local mirror:
-`notes/references/spritely-conundrum-message-ordering-28-post9.html`),
-markm uses the bug as part of his broader case for retreating
-from end-to-end E-ORDER. He opens by quoting an earlier passage
-(rendered as a `<blockquote>` in the Discourse HTML), which
-**originates with cwebber** in the
-[cap-talk thread](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ)
-under the subject "Examples of E-Order being useful" — verified
-against the cap-talk archive mirror at
-`notes/references/google-groups-cap-talk-R5kc06XGqWs-WDraOqkQAgAJ.html.gz`,
-where the same paragraph appears as cwebber's authored post and
-is quoted back in a follow-up that begins "[cwebber] writes:".
+cwebber, in the [cap-talk thread](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ)
+"Examples of E-Order being useful", says:
 
 > "Prior to the 'Lost Resolution Bug', E-Order appears to be
 > something delivered 'for free', falling out of the
 > implementation naturally. We can jump up and down and say
-> 'look at this thing we got at no extra cost!'"
-> — cwebber, cap-talk "Examples of E-Order being useful";
-> re-quoted by markm in Spritely #9
+> 'look at this thing we got at no extra cost!'" — cwebber
 
-markm's own response in the same post:
+> "Post uncovering of the 'Lost Resolution Bug', E-Order seems
+> to be something that has uncomfortable edges which either
+> must be programmed around or be understood not to be exactly
+> what we thought." — cwebber
+
+markm responds in [Spritely "Conundrum: Message Ordering" #9](https://community.spritely.institute/t/conundrum-message-ordering/28/9):
 
 > "This is indeed one of the considerations leading me to
-> retreat to Tyler's Waterken point-to-point fifo." — markm,
-> Spritely #9
-
-So Lost Resolution is the historical moment that revealed
-E-ORDER is **not** free in distributed implementations — it has
-"uncomfortable edges which either must be programmed around or
-be understood not to be exactly what we thought" (cwebber, in
-the [cap-talk thread](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ)
-that cwebber introduces in Spritely post #6 and that markm
-re-quotes in #9; local mirror
-`notes/references/google-groups-cap-talk-R5kc06XGqWs-WDraOqkQAgAJ.html.gz`).
+> retreat to Tyler's Waterken point-to-point fifo." — markm
 
 That motivates the view that something weaker (Waterken-style
-point-to-point FIFO, plus user-level e-order-like affordances)
+point-to-point FIFO, plus user-level E-Order-like affordances)
 is the more pragmatic target.
 
 ### 3.5 Relation to other named races
 
 | Name | Source | Specific scenario |
 |---|---|---|
-| Lost Resolution Bug | erights `passing-rules.html` | Far→Promise downgrade when a Carol-ref is sent through Bob; hashtables-with-Carol-key fail to unserialize |
-| WormholeOp / "the conflict" | erights `WormholeOp.html` | The 3-vat conflict between Partial Ordering, Going Home, and Preserve Passability |
-| Tribble 4-way race | Cap'n Proto `rpc.capnp` | Promise resolution across 4 parties — chained shortenings |
+| Lost Resolution Bug | [erights `passing-rules.html`](http://erights.org/elib/equality/passing-rules.html#lost-resolution) | Far→Promise downgrade when a Carol-ref is sent through Bob; hashtables-with-Carol-key fail to unserialize |
+| WormholeOp / "the conflict" | [erights `WormholeOp.html`](http://erights.org/elib/distrib/captp/WormholeOp.html) | The 3-vat conflict between Partial Ordering, Going Home, and Preserve Passability |
+| Tribble 4-way race | [Cap'n Proto `rpc.capnp`](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/capnp/rpc.capnp) | Promise resolution across 4 parties — chained shortenings |
 | Midori four-vat promise shortening | dtribble in [ocapn/ocapn#11](https://github.com/ocapn/ocapn/issues/11) (= Tribble 4-way) | Same as above |
-| Auxiliary Data Problem | markm in Spritely #9; [agoric-sdk#6355](https://github.com/Agoric/agoric-sdk/pull/6355) | Agoric-internal name for related distributed-data races |
+| Auxiliary Data Problem | markm in [Spritely #9](https://community.spritely.institute/t/conundrum-message-ordering/28/9); [agoric-sdk#6355](https://github.com/Agoric/agoric-sdk/pull/6355) | Agoric-internal name for related distributed-data races |
 
 These are related but distinct. The Lost Resolution Bug is
 specifically about *resolved-ness* preservation when an
 *already-resolved* Carol reference is passed through a 3-vat
 introduction. Tribble's 4-way race is about ordering across
 *unresolved* promise chains that shorten across multiple parties.
-Both stem from preserving E-ORDER across indirect reference
+Both stem from preserving E-Order across indirect reference
 passing, but they manifest in different ways and admit different
 fixes.
 
@@ -812,25 +783,31 @@ fixes.
   forward-strictly-to-R rule for Tribble's 4-way race, which is a
   related but separate issue.
 - **OCapN** uses a pipelined version of the
-  `provideFor` / `acceptFrom` protocol from
-  [erights `provideFor.html`](http://erights.org/elib/distrib/captp/provideFor.html)
-  for Granovetter introductions, but without WormholeOp. Because
-  OCapN does not currently specify hashtable-passability the same
-  way E does, the bug does not manifest in the same form.
+  [erights `provideFor` / `acceptFrom` protocol](http://erights.org/elib/distrib/captp/provideFor.html)
+  for Granovetter introductions, exposed on the OCapN
+  [bootstrap object](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#bootstrap-object)
+  as the
+  [`deposit-gift`](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#deposit-gift-method)
+  and
+  [`withdraw-gift`](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#withdraw-gift-method)
+  methods (corresponding to E's `provideFor` and `acceptFrom`,
+  respectively), but without WormholeOp. Because OCapN does not
+  currently specify hashtable-passability the same way E does,
+  the bug does not manifest in the same form.
 - **Ridley's `op:flush` proposal** addresses the
   promise-shortening (Tribble 4-way) version, *not* the
   Lost-Resolution (hashtable-key) version.
 - **Mark Miller's contemporary view** has two stages, with the
   later one **superseding** the earlier:
   - *Spritely thread #8 / #9 (Oct 2022):* drop end-to-end
-    E-ORDER in favor of "Tyler's Waterken point-to-point FIFO,"
-    with e-order recovered at the user level via "appropriate
+    E-Order in favor of "Tyler's Waterken point-to-point FIFO,"
+    with E-Order recovered at the user level via "appropriate
     affordances and conventions."
   - *Endo meeting transcript (May 2026):* clarify that
     "point-to-point" was a poorly-chosen term; the target tier
     is **end-to-end reference FIFO** (§1.4), strictly stronger
     than per-CapTP-session FIFO and strictly weaker than full
-    E-ORDER. Promise shortening *is* required (for availability)
+    E-Order. Promise shortening *is* required (for availability)
     and the protocol must add explicit synchronization at every
     shortening event to preserve §1.4. This 2026 framing is the
     current reference for OCapN.
@@ -841,12 +818,11 @@ fixes.
 
 ### 4.1 What it actually is
 
-WormholeOp is **not** a side-channel "shortcut packet." Per the
-canonical [erights `WormholeOp.html`](http://erights.org/elib/distrib/captp/WormholeOp.html),
-it is a way for VatA to **tunnel her unacknowledged A↔C VatTP
-traffic through VatB** so that VatB cannot deliver any message
-that depends on VatC's state until VatC has already processed
-that traffic. Wire shape:
+Per the canonical [erights `WormholeOp.html`](http://erights.org/elib/distrib/captp/WormholeOp.html),
+WormholeOp is a way for VatA to **tunnel her unacknowledged A↔C
+VatTP traffic through VatB** so that VatB cannot deliver any
+message that depends on VatC's state until VatC has already
+processed that traffic. Wire shape:
 
 ```
 WormholeOp(packets :byte[],
@@ -949,15 +925,22 @@ the destination.
   forward-strictly-to-R, which is a different design.
 - **OCapN** uses a pipelined version of the
   [erights `provideFor.html`](http://erights.org/elib/distrib/captp/provideFor.html)
-  protocol — `provideFor` registers the gift at C, and an
-  `acceptFrom` from B that arrives before the matching
-  `provideFor` queues at C until the `provideFor` resolves it
-  (so ordering is correct in the cooperative case, fail-safe
-  otherwise). OCapN does not currently carry the
-  Resolved-vs-Unresolved distinction the Lost Resolution Bug
-  hangs on, so the bug does not manifest in the same form.
+  protocol, exposed on the OCapN
+  [bootstrap object](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#bootstrap-object)
+  as the
+  [`deposit-gift`](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#deposit-gift-method)
+  method (E's `provideFor`) which registers the gift at C, and
+  the
+  [`withdraw-gift`](https://github.com/kumavis/ocapn/blob/main/draft-specifications/CapTP%20Specification.md#withdraw-gift-method)
+  method (E's `acceptFrom`) — if `withdraw-gift` arrives at C
+  before the matching `deposit-gift`, it queues at C until
+  `deposit-gift` resolves it (so ordering is correct in the
+  cooperative case, fail-safe otherwise). OCapN does not
+  currently carry the Resolved-vs-Unresolved distinction the
+  Lost Resolution Bug hangs on, so the bug does not manifest in
+  the same form.
 - markm (Spritely thread #8/#9) cites the Lost Resolution Bug
-  as one reason to retreat from end-to-end E-ORDER to
+  as one reason to retreat from end-to-end E-Order to
   point-to-point FIFO with user-level affordances. The cost of
   WormholeOp specifically is named in the [Endo meeting
   2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)
@@ -980,8 +963,8 @@ the destination.
   Approach to Access Control and Concurrency Control*, Johns
   Hopkins PhD thesis, May 2006** — local mirror by chapter under
   [`notes/references/markm-thesis/`](./references/markm-thesis/).
-  Authoritative for E-ORDER. Especially:
-  - [Chapter 19 — Delivering Messages in E-ORDER](./references/markm-thesis/chapter-19-delivering-messages-in-e-order.md)
+  Authoritative for E-Order. Especially:
+  - [Chapter 19 — Delivering Messages in E-Order](./references/markm-thesis/chapter-19-delivering-messages-in-e-order.md)
     (§19.1 fail-stop FIFO; §19.2 "FIFO is Too Weak"; §19.3
     forks; §19.4 "CAUSAL Order is Too Strong"; §19.5 joins;
     §19.6 fairness; §19.7 comparison to TCP / CAUSAL / AGREED)
@@ -1007,7 +990,7 @@ for offline reading.
 ### Cap'n Proto
 
 - [Cap'n Proto: RPC Protocol](https://capnproto.org/rpc.html)
-- [`capnproto/c++/src/capnp/rpc.capnp`](https://github.com/capnproto/capnproto/blob/master/c++/src/capnp/rpc.capnp) — Embargo, Disembargo, Tribble 4-way race comments. Local mirror: `notes/references/capnproto-rpc.capnp`
+- [`capnproto/c++/src/capnp/rpc.capnp`](https://github.com/capnproto/capnproto/blob/master/c++/src/capnp/rpc.capnp) — Embargo, Disembargo, Tribble 4-way race comments
 - [`capnproto/c++/src/capnp/rpc.c++`](https://github.com/capnproto/capnproto/blob/master/c%2B%2B/src/capnp/rpc.c%2B%2B) — embargo enforcement
 - [Promise Pipelining in Cap'n Proto RPC — Lobsters discussion](https://lobste.rs/s/0ykbk6/promise_pipelining_cap_n_proto_rpc)
 
@@ -1016,23 +999,22 @@ for offline reading.
 - [agoric-sdk#40: deny passing Presences in arguments?](https://github.com/Agoric/agoric-sdk/issues/40)
 - [agoric-sdk#6355: cheap auxdata](https://github.com/Agoric/agoric-sdk/pull/6355) (markm's "Auxiliary Data Problem" approximation)
 - [PlaygroundVat — limitations.md](https://github.com/agoric-labs/PlaygroundVat/blob/master/docs/limitations.md)
-- [cap-talk: Goblin semantics, and thinking through / planning for CapTP](https://groups.google.com/g/cap-talk/c/xWv2-J62g-I) — local mirror `notes/references/google-groups-cap-talk-xWv2-J62g-I.html.gz`
-- [cap-talk thread linked from markm Spritely #9](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ) — local mirror `notes/references/google-groups-cap-talk-R5kc06XGqWs-WDraOqkQAgAJ.html.gz` (cwebber's `carol~.x()` / `bob~.y(carol)` / `carol~.z()` example)
+- [cap-talk: Goblin semantics, and thinking through / planning for CapTP](https://groups.google.com/g/cap-talk/c/xWv2-J62g-I)
+- [cap-talk: Examples of E-Order being useful (cwebber)](https://groups.google.com/g/cap-talk/c/R5kc06XGqWs/m/WDraOqkQAgAJ) — origin of the `carol~.x()` / `bob~.y(carol)` / `carol~.z()` example
 
 ### Mark Miller's contemporary view
 
-- **[Endo meeting 2026-05-06 — message ordering](./references/Endo%20Meeting%2020260506%20transcript.md)** (edited transcript) — markm clarifies that "point-to-point FIFO" was a poorly-chosen term for what he meant; the correct framing is **end-to-end reference FIFO** (markm phrases it variously as "end-to-end FIFO per reference"). Also: don't standardize full E-ORDER, the modern Lost Resolution Bug definition, and why promise shortening is required for availability.
-- [Spritely Conundrum: Message Ordering #8 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/8) — local mirror `notes/references/spritely-conundrum-message-ordering-28-post8.html`
-- [Spritely Conundrum: Message Ordering #9 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/9) — local mirror `notes/references/spritely-conundrum-message-ordering-28-post9.html`
-- [Spritely Conundrum: Message Ordering — thread index](https://community.spritely.institute/t/conundrum-message-ordering/28) — local mirror `notes/references/spritely-conundrum-message-ordering-28.json`
-- Excerpts in readable form: `notes/references/spritely-conundrum-message-ordering-excerpts.md`
+- **[Endo meeting 2026-05-06 — message ordering](./references/Endo%20Meeting%2020260506%20transcript.md)** (edited transcript) — markm clarifies that "point-to-point FIFO" was a poorly-chosen term for what he meant; the correct framing is **end-to-end reference FIFO** (markm phrases it variously as "end-to-end FIFO per reference"). Also: don't standardize full E-Order, the modern Lost Resolution Bug definition, and why promise shortening is required for availability.
+- [Spritely Conundrum: Message Ordering #8 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/8)
+- [Spritely Conundrum: Message Ordering #9 (markm)](https://community.spritely.institute/t/conundrum-message-ordering/28/9)
+- [Spritely Conundrum: Message Ordering — thread index](https://community.spritely.institute/t/conundrum-message-ordering/28)
 
-### Related ocapn issues (local mirrors)
+### Related ocapn issues
 
-- `notes/references/ocapn-ocapn-issue-15.json` — "Replacing deliver.rdr with op:listen?"
-- `notes/references/ocapn-ocapn-issue-24.json` — referenced by zarutian in the wire-trace example
-- `notes/references/ocapn-ocapn-issue-236.json` — original promise-shortening discussion before #11
-- `notes/references/ocapn-ocapn-issue-265.json` — Two Generals concern in 3PH
+- [ocapn/ocapn#15](https://github.com/ocapn/ocapn/issues/15) — "Replacing deliver.rdr with op:listen?"
+- [ocapn/ocapn#24](https://github.com/ocapn/ocapn/issues/24) — referenced by zarutian in the wire-trace example
+- [ocapn/ocapn#236](https://github.com/ocapn/ocapn/issues/236) — original promise-shortening discussion before #11
+- [ocapn/ocapn#265](https://github.com/ocapn/ocapn/issues/265) — Two Generals concern in 3PH
 
 ---
 
@@ -1075,19 +1057,19 @@ B redeems it.
 Questions, Answers, Imports, Exports.
 
 **Hasse diagram.** The visualization markm uses (thesis Figure
-19.1) for E-ORDER constraints. References as arrows; messages
+19.1) for E-Order constraints. References as arrows; messages
 between the source-and-arrowhead points; forks where references
 get sent as arguments.
 
-**E-ORDER.** Markm's thesis (Chapter 19) name for fail-stop FIFO
+**E-Order.** Markm's thesis (Chapter 19) name for fail-stop FIFO
 with forks; joins (§19.5) are presented as part of the same
-chapter and so can also be considered part of E-ORDER. This
-document splits them for clarity: §1.5 is "E-ORDER (Tree Order
-with forks)" and §1.6 is "E-ORDER with joins (Partial Order)" —
+chapter and so can also be considered part of E-Order. This
+document splits them for clarity: §1.5 is "E-Order (Tree Order
+with forks)" and §1.6 is "E-Order with joins (Partial Order)" —
 matching the tier names on `partial-order.html` and
 `after-both.html`. The forks property is what distinguishes
-E-ORDER from end-to-end reference FIFO. Markm's contemporary view
-(Endo meeting 2026-05-06) is that full E-ORDER is too costly to
+E-Order from end-to-end reference FIFO. Markm's contemporary view
+(Endo meeting 2026-05-06) is that full E-Order is too costly to
 standardize over the network and OCapN should target end-to-end
 reference FIFO (§1.4) instead.
 
@@ -1112,7 +1094,7 @@ to a remote ref, the receiver queues outbound messages on the
 new direct path and sends a `Disembargo` with `senderLoopback`;
 once the same `Disembargo` returns with `receiverLoopback`, the
 queue flushes. Forces any in-flight messages on the old path to
-drain first, preserving E-ORDER across resolution.
+drain first, preserving E-Order across resolution.
 
 **Forward-strictly-to-R (Cap'n Proto).** Once a promise P
 resolves to a remote ref R, all further messages to P are
@@ -1164,7 +1146,7 @@ wire-level path or wire-level reference identity changes
 underneath. This is the actual goal `op:flush` (and its
 alternatives) are trying to deliver and what Cap'n Proto's
 embargo machinery actually delivers. **Strictly weaker than
-full E-ORDER (§1.5)** — does not enforce the cross-sender forks
+full E-Order (§1.5)** — does not enforce the cross-sender forks
 constraint (Bob's Y must arrive after Alice's X when the
 reference was forwarded). Markm's contemporary recommendation
 for OCapN
