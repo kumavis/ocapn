@@ -15,6 +15,7 @@ Offline / reproducible copies of sources cited in `notes/message-ordering.md` an
 | `ocapn-ocapn-issue-236.json` | [ocapn/ocapn#236](https://github.com/ocapn/ocapn/issues/236) |
 | `ocapn-ocapn-issue-265.json` | [ocapn/ocapn#265](https://github.com/ocapn/ocapn/issues/265) |
 | `ocapn-ocapn-issue-15.json` | [ocapn/ocapn#15](https://github.com/ocapn/ocapn/issues/15) |
+| `ocapn-ocapn-issue-24.json` | [ocapn/ocapn#24](https://github.com/ocapn/ocapn/issues/24) |
 | `Endo Meeting 20260506 transcript.md` | Endo team call, 2026-05-06 (message ordering); readable Markdown transcript edited from captions |
 
 **Fetch hints:** Spritely often serves a crawler-friendly HTML view (HTTP 200 with `x-discourse-crawler-view: true`) when using a common bot `User-Agent`. If normal browser or default `curl` gets 403, retry with e.g. `curl -A 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'`.
