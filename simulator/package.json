@@ -1,0 +1,32 @@
+{
+  "name": "ocapn-simulator",
+  "version": "0.0.0",
+  "description": "Browser-based simulator for OCapN promise-shortening experiments using @endo/ocapn from the op:flush branch.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fetch-ocapn": "node scripts/fetch-ocapn.mjs",
+    "prestart": "node scripts/fetch-ocapn.mjs",
+    "prebuild": "node scripts/fetch-ocapn.mjs",
+    "start": "vite",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@endo/eventual-send": "^1.2.1",
+    "@endo/harden": "^1.0.0",
+    "@endo/init": "^1.1.13",
+    "@endo/marshal": "^1.5.0",
+    "@endo/nat": "^5.2.0",
+    "@endo/pass-style": "^1.8.0",
+    "@endo/promise-kit": "^1.1.0",
+    "@noble/curves": "^1.9.0",
+    "@noble/hashes": "^1.8.0",
+    "ses": "^1.10.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1",
+    "vite": "^7.1.0"
+  }
+}
