@@ -269,21 +269,6 @@ The active direction in [ocapn/ocapn#11][ocapn-github-11] is a dedicated CapTP *
 
 Prototype: branch `claude/ocapn-op-flush-WNRFV`. The same tier is what markm argues OCapN should target in the [Endo meeting 2026-05-06][endo-transcript]—end-to-end reference FIFO, not full E-Order.
 
-### 2.8 OCapN + `delivered-after` only (work-in-progress)
-
-| | |
-|---|---|
-| Ordering | §1.3 fail-stop FIFO baseline; per-message opt-in to stronger ordering via `delivered-after` |
-| Cross-network | Yes |
-| Mutually defensive | Yes |
-| Promise shortening | Protocol admits reorder; user opts in via `delivered-after` |
-
-Lowest protocol cost; ships the disagreement out to user code. See [`notes/issue-11-promise-shortening.md` §10.1, §10.3][notes-issue-11] and the prototype branch `claude/ocapn-deliver-after-WNRFV`.
-
-### 2.9 Goblins / SwingSet / other reference implementations
-
-Not enumerated here — these are downstream choices made on top of the OCapN spec. Their behavior depends on which row of §2.6 / §2.7 / §2.8 they implement and on application-level conventions on top.
-
 ---
 
 ## 3. The Lost Resolution Bug
@@ -562,8 +547,6 @@ Per-sender, per-logical-reference FIFO that survives promise shortening (§1.4).
 The general distributed-systems property: if message m₁ causally precedes m₂ (e.g., the sender of m₂ had observed m₁'s effects before sending m₂), then m₂ is delivered after m₁. Stronger than per-pipe FIFO; weaker than total order. End-to-end reference FIFO is one specific slice of causal order — the slice along a single logical reference from a single sender. Markm thesis §19.4 explicitly rejects full causal order as a target for distributed ocap.
 
 <!-- Link references -->
-
-[notes-issue-11]: ./issue-11-promise-shortening.md
 
 [agoric-sdk-40]: https://github.com/Agoric/agoric-sdk/issues/40
 [agoric-sdk-6355]: https://github.com/Agoric/agoric-sdk/pull/6355
