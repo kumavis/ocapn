@@ -1,0 +1,79 @@
+Counterexample trace from TLC for MC_TargetA_Shorten.
+This is the minimal trace that violates EndToEndFIFO.
+
+Scenario: Alice sends two messages on a promise that resolves to OBJ in
+Alice's own vat. Shortening is admitted. Alice receives the resolution
+between her two sends, so m1 took the long path (A->B->A) while m2 takes
+the local shortcut. The race delivers m2 first.
+
+============================================================================
+
+State 1: <Initial predicate>
+/\ chanLocal     = << >>
+/\ chanBA        = << >>
+/\ chanAB        = << >>
+/\ bobPending    = << >>
+/\ aliceSent     = 0
+/\ aliceResolved = FALSE
+/\ bobResolved   = FALSE
+/\ deliveryOrder = << >>
+
+State 2: Alice sends m1 -- enqueued on chanAB (Alice hasn't resolved yet)
+<AliceSendCall>
+/\ chanAB        = << [type |-> "call", seq |-> 1] >>
+/\ aliceSent     = 1
+
+State 3: Bob resolves the promise -- Resolve notification queued on chanBA
+<BobResolve>
+/\ chanBA        = << [type |-> "resolve"] >>
+/\ bobResolved   = TRUE
+
+State 4: Alice receives the Resolve and learns the promise is settled.
+        Note: m1 is *still in flight* on chanAB; Bob has not picked it up
+        yet, let alone forwarded it back.
+<AliceReceive>
+/\ chanBA        = << >>
+/\ aliceResolved = TRUE
+/\ chanAB        = << [type |-> "call", seq |-> 1] >>   (m1 still in flight!)
+
+State 5: Alice sends m2.  SHORTEN /\ aliceResolved /\ TARGET = "A" is now
+        true, so m2 takes the local fast path -- straight to chanLocal,
+        bypassing Bob entirely.
+<AliceSendCall>
+/\ chanLocal     = << [type |-> "call", seq |-> 2] >>
+/\ aliceSent     = 2
+
+State 6: Bob receives m1 from chanAB and parks it in bobPending.
+<BobReceiveCall>
+/\ chanAB        = << >>
+/\ bobPending    = << [type |-> "call", seq |-> 1] >>
+
+State 7: Alice delivers m2 locally to OBJ.  *** RACE ***
+<AliceLocalDeliver>
+/\ chanLocal     = << >>
+/\ deliveryOrder = << 2 >>
+
+State 8: Bob forwards m1 (now that he is resolved) onto chanBA.
+<BobProcessPending>
+/\ chanBA        = << [type |-> "call", seq |-> 1] >>
+/\ bobPending    = << >>
+
+State 9: Alice receives the forwarded m1 and delivers it to OBJ.
+        deliveryOrder is now <<2, 1>> -- INVARIANT VIOLATED.
+<AliceReceive>
+/\ deliveryOrder = << 2, 1 >>     *** EndToEndFIFO violated ***
+
+============================================================================
+
+This is exactly the race that:
+  - CapTP-of-E (E-on-Java) prevents via DelayedRedirector + a loopback
+    __whenMoreResolved sent down the original wire path, which interposes
+    a buffer-promise so post-resolution sends drain after the in-flight
+    pipelined sends finish their bounce.
+  - Cap'n Proto prevents via Disembargo { senderLoopback }.
+  - Waterken (PipelinePromise path) prevents via a Flush Task enqueued on
+    the same per-peer pipeline FIFO.
+  - Ridley's op:flush proposal for OCapN prevents via an explicit flush
+    ceremony before the path switchover.
+  - OCapN's current draft does NOT prevent (this gap is what motivated
+    ocapn/ocapn#11).
