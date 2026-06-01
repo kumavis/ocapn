@@ -1,0 +1,79 @@
+{
+  "url": "https://api.github.com/repos/ocapn/ocapn/issues/265",
+  "repository_url": "https://api.github.com/repos/ocapn/ocapn",
+  "labels_url": "https://api.github.com/repos/ocapn/ocapn/issues/265/labels{/name}",
+  "comments_url": "https://api.github.com/repos/ocapn/ocapn/issues/265/comments",
+  "events_url": "https://api.github.com/repos/ocapn/ocapn/issues/265/events",
+  "html_url": "https://github.com/ocapn/ocapn/issues/265",
+  "id": 4310058792,
+  "node_id": "I_kwDOFSf48c8AAAABAOZHKA",
+  "number": 265,
+  "title": "3PH Two Generals' Problem",
+  "user": {
+    "login": "RidleyWrites",
+    "id": 219720592,
+    "node_id": "U_kgDODRirkA",
+    "avatar_url": "https://avatars.githubusercontent.com/u/219720592?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/RidleyWrites",
+    "html_url": "https://github.com/RidleyWrites",
+    "followers_url": "https://api.github.com/users/RidleyWrites/followers",
+    "following_url": "https://api.github.com/users/RidleyWrites/following{/other_user}",
+    "gists_url": "https://api.github.com/users/RidleyWrites/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/RidleyWrites/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/RidleyWrites/subscriptions",
+    "organizations_url": "https://api.github.com/users/RidleyWrites/orgs",
+    "repos_url": "https://api.github.com/users/RidleyWrites/repos",
+    "events_url": "https://api.github.com/users/RidleyWrites/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/RidleyWrites/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "labels": [
+
+  ],
+  "state": "open",
+  "locked": false,
+  "assignees": [
+
+  ],
+  "milestone": null,
+  "comments": 4,
+  "created_at": "2026-04-22T15:24:43Z",
+  "updated_at": "2026-05-05T22:09:12Z",
+  "closed_at": null,
+  "assignee": null,
+  "author_association": "COLLABORATOR",
+  "type": null,
+  "active_lock_reason": null,
+  "sub_issues_summary": {
+    "total": 0,
+    "completed": 0,
+    "percent_completed": 0
+  },
+  "issue_dependencies_summary": {
+    "blocked_by": 0,
+    "total_blocked_by": 0,
+    "blocking": 0,
+    "total_blocking": 0
+  },
+  "body": "While exploring solutions to 4-party problems in promise shortening(#11), @cwebber pointed out a potential problem where a message is dropped in transit without anybody knowing about it and peers are left forever in a state of waiting for something that will never come.\n\nThis is essentially the [Two Generals' Problem](https://en.wikipedia.org/wiki/Two_Generals%27_Problem).\n\nLooking into it, I realized the same problem could occur with regular 3-party handoffs and is much easier to explain.\n\nFor reference, here's a successful 3PH:\n\n<img width=\"369\" height=\"256\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/2aff0217-d204-4232-ac03-d45a9ceebebf\" />\n\n\nAnd here's what could happen:\n\n<img width=\"387\" height=\"326\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/ea5d5515-6592-4fef-9149-4a80972f5abc\" />\n\nThe question is what, if anything, we need to (or even can) do about it besides that netlayers in general should try to minimize the risks of the Two Generals' Problem.",
+  "closed_by": null,
+  "reactions": {
+    "url": "https://api.github.com/repos/ocapn/ocapn/issues/265/reactions",
+    "total_count": 0,
+    "+1": 0,
+    "-1": 0,
+    "laugh": 0,
+    "hooray": 0,
+    "confused": 0,
+    "heart": 0,
+    "rocket": 0,
+    "eyes": 0
+  },
+  "timeline_url": "https://api.github.com/repos/ocapn/ocapn/issues/265/timeline",
+  "performed_via_github_app": null,
+  "state_reason": null,
+  "pinned_comment": null
+}
