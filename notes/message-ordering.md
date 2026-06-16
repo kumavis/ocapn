@@ -128,6 +128,16 @@ Markm currently recommends *not* standardizing this tier for OCapN ([Endo meetin
 (Later in the same conversation markm renames "point-to-point" to "end-to-end FIFO per reference"
 — see §1.4. The two phrasings refer to the same target tier.)
 
+> [!NOTE]
+> Independently of the promise-shortening discussion, OCapN's
+> existing 3PH (`deposit-gift` / `withdraw-gift`) already
+> provides the cross-sender forks property *for remotable
+> references* as a structural consequence of the handoff being
+> mediated through the host. This is an observation about the
+> existing protocol, not a substitute for solving promise
+> shortening. See
+> [§2.6.1](#261-3ph-structurally-provides-e-order-for-remotables).
+
 ### 1.6 E-Order with joins (Partial Order)
 
 E-Order plus joins: `E.join(a, b)` returns a promise whose ordering constraints are the joins of the orders of `a` and `b`. A message on the joined promise is delivered only after every prior send on either input. This is what's needed for grant matching and other distributed-equality patterns. (Thesis §19.5, [erights `after-both.html`][erights-after-both].)
@@ -272,6 +282,101 @@ The spec language reads as if the netlayer's per-pair FIFO is sufficient. Per ma
 The proposed clarification, per markm's contemporary framing ([Endo meeting 2026-05-06][endo-transcript]), is to upgrade OCapN's ordering guarantee from §1.3 (per-CapTP-session fail-stop FIFO) to §1.4 (end-to-end reference FIFO) — *not* all the way to full §1.5 E-Order, which markm now considers too costly to standardize:
 
 > "Don't standardize e-ordering—it's too hard. Back off to […] end-to-end FIFO per reference. […] I'm not willing to retreat from what I'll call **end-to-end FIFO** (per reference)—I'm just avoiding the confusing 'point-to-point' wording. It's still FIFO, not e-ordering."
+
+#### 2.6.1 3PH structurally provides E-Order for remotables
+
+OCapN's spec-level guarantee for §2.6 is §1.3 (per-CapTP-session
+fail-stop FIFO) — admittedly "too weak" alone per markm thesis
+§19.2. But for the specific case markm uses to motivate full
+§1.5 E-Order — the cross-sender forks scenario where Alice
+sends X to Carol, hands Carol's reference to Bob, and Bob sends
+Y to Carol — OCapN's 3PH (`deposit-gift` / `withdraw-gift`)
+provides the forks property as a structural consequence of
+Carol-mediated handoff, without WormholeOp and without any
+ordering machinery beyond per-session FIFO.
+
+**The constraint chain.** Suppose Alice sends X to Carol on her
+A↔C session, then introduces Carol's reference to Bob via 3PH:
+
+1. Alice sends X to Carol on A↔C. (FIFO position N.)
+2. Alice sends `deposit-gift(token)` to Carol on A↔C. (FIFO position N+1.)
+3. Alice tells Bob "go withdraw `token` from Carol." (On A↔B.)
+4. Bob sends `withdraw-gift(token)` to Carol on B↔C.
+5. Carol's `withdraw-gift` handler can only return a ref *after*
+   she has processed the matching `deposit-gift`.
+6. `deposit-gift` is processed in A↔C FIFO order — so *after* X.
+7. `withdraw-gift` resolves; Bob now has a ref to Carol.
+8. Bob sends Y to Carol on B↔C.
+
+By construction: X is dispatched at Carol *before* `deposit-gift`
+is dispatched, *before* `withdraw-gift` can resolve, *before*
+Bob has the ref he needs to send Y. Y necessarily dispatches
+at Carol after X. That is exactly the §1.5 forks property:
+
+> "Suppose Alice first sends **X** to Carol, then sends **W** to
+> Bob carrying the remotable reference to Carol; Bob receives it
+> and sends **Y** to Carol on that reference. Under
+> **e-ordering**, **Y** *cannot* be delivered to Carol until
+> **X** has been delivered to Carol." — markm,
+> [Endo meeting 2026-05-06](./references/Endo%20Meeting%2020260506%20transcript.md)
+
+**Pipelining doesn't break it.** If Bob pipelines Y on the
+answer promise from `withdraw-gift`, Y queues at Carol's answer
+slot for the withdraw question. The answer slot resolves only
+when `withdraw-gift` dispatches, which only happens after
+`deposit-gift` dispatches, which is after X. Y still dispatches
+after X.
+
+**Markm's framing in the Endo meeting hints at this** but
+understates it. He says:
+
+> "For remotable references […] there's no dynamic shortening;
+> something isn't a remotable reference until it's already as
+> short as possible (no intermediaries), so you get
+> sender-to-target FIFO simply as a consequence of vat-to-vat
+> ordering, with no intermediate vats. All the complexity comes
+> from promises…"
+
+He frames the remotable case as just "sender-to-target FIFO"
+(the §1.4 property). But what 3PH actually gives is the
+*cross-sender* forks property, because Carol's mediation imposes
+a happens-before edge from Alice's prior sends to Bob's later
+sends. Mediation through Carol *is* the wormhole.
+
+**Scope.**
+
+- *Remotables only.* For promises with shortening, the path can
+  switch from "through the original host" to "direct to the
+  resolver," and the structural serialization disappears. That
+  is the §1.4 problem, and it is what `op:flush` (§2.7) and the
+  per-promise sequence numbers proposal address. This subsection
+  says nothing about that problem.
+- *3PH-introduced only.* Holds because the only way Bob gets a
+  ref to Carol is by a round-trip through Carol. If OCapN ever
+  added a mechanism to deliver a remotable ref *without* a
+  withdraw-from-Carol round-trip (e.g., an inline-handoff
+  optimization), that mechanism would have to preserve the
+  property explicitly.
+- *Cross-sender forks per Alice, not globally.* Bob's Y and
+  some other introducee Dave's Z can interleave at Carol
+  arbitrarily. That matches §1.5: E-Order's forks are
+  per-original-source, not a global total order.
+- *Withdraw must actually round-trip.* If a clever
+  implementation cached the resolved cap from a prior withdraw
+  and skipped the round-trip on a subsequent introduction, it
+  would skip the synchronization. Implementations should ensure
+  `withdraw-gift` resolution serializes after the matching
+  `deposit-gift` arrives at Carol.
+
+**Relationship to the promise-shortening work.** This subsection
+is *not* a substitute for `op:flush` (§2.7) or the per-promise
+sequence numbers proposal — those address a separate problem
+(post-shortening sends on a shortened promise staying FIFO with
+pre-shortening sends on the same promise). The observation here
+is just that, for the *remotable* case markm uses to motivate
+full §1.5 E-Order, end-to-end FIFO plus a handoff that round-trips
+through the host already gives the forks property. Promise
+shortening remains an open problem on its own terms.
 
 ### 2.7 OCapN + `op:flush` (proposed)
 
